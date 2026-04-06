@@ -19,7 +19,7 @@ void sm_search(
 	hls::stream<search_in_t>& input,
 	//! [out] Results from searches
 	hls::stream<search_out_t>& output,
-	Node const* hbm
+	Node const **memory
 );
 #endif
 

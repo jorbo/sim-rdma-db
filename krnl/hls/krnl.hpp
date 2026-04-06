@@ -9,6 +9,8 @@ extern "C" {
 
 
 void krnl(
+	//! [inout] Encoded root address shared with the caller
+	bptr_t *root,
 	//! [inout] Pointer to on-chip high-bandwidth memory
 	Node *hbm,
 	//! [in]    Buffer to hold the list of operation requests

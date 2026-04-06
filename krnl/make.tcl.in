@@ -28,6 +28,7 @@ add_files ${CMAKE_CURRENT_SOURCE_DIR}/core/search.c -cflags "-I${CMAKE_CURRENT_B
 add_files ${CMAKE_CURRENT_SOURCE_DIR}/core/tree-helpers.c -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files ${CMAKE_CURRENT_SOURCE_DIR}/core/insert-helpers.c -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files ${CMAKE_CURRENT_SOURCE_DIR}/core/memory.c -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
+add_files ${CMAKE_CURRENT_SOURCE_DIR}/core/io.c -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files ${CMAKE_CURRENT_SOURCE_DIR}/core/operations.c -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files ${CMAKE_CURRENT_SOURCE_DIR}/core/split.c -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files ${CMAKE_CURRENT_SOURCE_DIR}/hls/sm-operations.cpp -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"

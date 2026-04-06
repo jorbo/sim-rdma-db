@@ -34,6 +34,7 @@ set(EXAMPLE_HLS_DEPENDS
 	${CMAKE_CURRENT_SOURCE_DIR}/core/insert.c
 	${CMAKE_CURRENT_SOURCE_DIR}/core/insert-helpers.c
 	${CMAKE_CURRENT_SOURCE_DIR}/core/memory.c
+	${CMAKE_CURRENT_SOURCE_DIR}/core/io.c
 	${CMAKE_CURRENT_SOURCE_DIR}/core/operations.c
 	${CMAKE_CURRENT_SOURCE_DIR}/core/split.c
 	${CMAKE_CURRENT_SOURCE_DIR}/hls/sm-operations.cpp

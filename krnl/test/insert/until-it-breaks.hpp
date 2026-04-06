@@ -6,7 +6,9 @@ extern "C" {
 #include "../../core/node.h"
 };
 #include "../test-helpers.hpp"
-#include "../../operations.hpp"
+extern "C" {
+#include "../../core/operations.h"
+};
 #include <hls_stream.h>
 
 

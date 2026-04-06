@@ -11,7 +11,7 @@ extern "C" {
 
 bool root_is_leaf(KERNEL_ARG_DECS) {
 	bool pass = true;
-	bptr_t root = 0;
+	const bptr_t root_addr = bptr_make(0, 0);
 	hls::stream<search_in_t> input_log;
 	uint_fast8_t ops_in, ops_out;
 	search_in_t last_in;
@@ -20,12 +20,14 @@ bool root_is_leaf(KERNEL_ARG_DECS) {
 	uint_fast64_t offset = 0;
 
 	// Set up initial state
-	mem_reset_all(hbm);
+	DECLARE_MEMORY_VIEW(memory, hbm)
+	mem_reset_all(memory);
 	reset_ramstream_offsets();
-	SET_IKV(root, 0, 1, 10)
-	SET_IKV(root, 1, 2, 20)
-	SET_IKV(root, 2, 4, 40)
-	SET_IKV(root, 3, 5, 50)
+	*root = root_addr;
+	SET_IKV(root_addr, 0, 1, 10)
+	SET_IKV(root_addr, 1, 2, 20)
+	SET_IKV(root_addr, 2, 4, 40)
+	SET_IKV(root_addr, 3, 5, 50)
 	hbm_dump((uint8_t*) hbm, 0, sizeof(Node), 2);
 	// Should fail
 	INPUT_SEARCH(0)

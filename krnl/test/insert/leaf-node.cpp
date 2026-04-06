@@ -20,8 +20,10 @@ bool leaf_node(KERNEL_ARG_DECS) {
 	uint_fast64_t offset = 0;
 
 	// Set up initial state
-	mem_reset_all(hbm);
+	DECLARE_MEMORY_VIEW(memory, hbm)
+	mem_reset_all(memory);
 	reset_ramstream_offsets();
+	*root = bptr_make(0, 0);
 	// Should succeed
 	INPUT_INSERT(0, 2)
 	INPUT_INSERT(5, 3)
@@ -68,7 +70,7 @@ bool leaf_node(KERNEL_ARG_DECS) {
 		std::cerr << std::endl;
 		pass = false;
 	}
-	dump_node_list(stdout, hbm);
+	dump_node_list(stdout, (Node const **) memory);
 
 	return pass;
 }

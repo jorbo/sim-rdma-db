@@ -20,8 +20,10 @@ bool split_root(KERNEL_ARG_DECS) {
 	uint_fast64_t offset = 0;
 
 	// Set up initial state
-	mem_reset_all(hbm);
+	DECLARE_MEMORY_VIEW(memory, hbm)
+	mem_reset_all(memory);
 	reset_ramstream_offsets();
+	*root = bptr_make(0, 0);
 	hbm_dump((uint8_t*) req_buffer, 0, sizeof(Request), 15);
 	hbm_dump((uint8_t*) resp_buffer, 0, sizeof(Response), 15);
 	// Should succeed
@@ -74,7 +76,7 @@ bool split_root(KERNEL_ARG_DECS) {
 	}
 	hbm_dump((uint8_t*) req_buffer, 0, sizeof(Request), 15);
 	hbm_dump((uint8_t*) resp_buffer, 0, sizeof(Response), 15);
-	dump_node_list(stdout, hbm);
+	dump_node_list(stdout, (Node const **) memory);
 
 	return pass;
 }

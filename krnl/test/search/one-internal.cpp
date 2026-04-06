@@ -11,7 +11,9 @@ extern "C" {
 
 bool one_internal(KERNEL_ARG_DECS) {
 	bool pass = true;
-	bptr_t root = MAX_LEAVES;
+	const bptr_t root_addr = bptr_make(1, 0);
+	const bptr_t left_child = bptr_make(0, 1);
+	const bptr_t right_child = bptr_make(0, 2);
 	hls::stream<search_in_t> input_log;
 	uint_fast8_t ops_in, ops_out;
 	search_in_t last_in;
@@ -20,21 +22,23 @@ bool one_internal(KERNEL_ARG_DECS) {
 	uint_fast64_t offset = 0;
 
 	// Set up initial state
-	mem_reset_all(hbm);
+	DECLARE_MEMORY_VIEW(memory, hbm)
+	mem_reset_all(memory);
 	reset_ramstream_offsets();
+	*root = root_addr;
 	// Root
-	SET_IKV(root, 0, 5, 1)
-	SET_IKV(root, 1, 11, 2)
+	SET_IKP(root_addr, 0, 5, left_child)
+	SET_IKP(root_addr, 1, 11, right_child)
 	// Left Child
-	SET_IKV(1, 0, 1, -1)
-	SET_IKV(1, 1, 2, -2)
-	SET_IKV(1, 2, 4, -4)
-	SET_IKV(1, 3, 5, -5)
+	SET_IKV(left_child, 0, 1, -1)
+	SET_IKV(left_child, 1, 2, -2)
+	SET_IKV(left_child, 2, 4, -4)
+	SET_IKV(left_child, 3, 5, -5)
 	// Right Child
-	SET_IKV(2, 0, 7, -7)
-	SET_IKV(2, 1, 8, -8)
-	SET_IKV(2, 2, 10, -10)
-	SET_IKV(2, 3, 11, -11)
+	SET_IKV(right_child, 0, 7, -7)
+	SET_IKV(right_child, 1, 8, -8)
+	SET_IKV(right_child, 2, 10, -10)
+	SET_IKV(right_child, 3, 11, -11)
 	hbm_dump((uint8_t*) hbm, 0, sizeof(Node), 4);
 	// Should fail
 	INPUT_SEARCH(0)

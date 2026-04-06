@@ -19,7 +19,7 @@ void sm_insert(
 	hls::stream<insert_in_t>& input,
 	//! [out] Status codes from inserts
 	hls::stream<insert_out_t>& output,
-	Node *hbm
+	Node **memory
 );
 #endif
 

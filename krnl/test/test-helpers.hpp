@@ -17,12 +17,21 @@ extern "C" {
 	req_buffer[offset++] = encode_insert_req(last_in); \
 	input_log.write(last_in);
 #define SET_IKV(addr, i, key_, value_) \
-	hbm[addr].keys[i] = key_; hbm[addr].values[i].data = value_;
+	hbm[bptr_node(addr)*MAX_NODES_PER_LEVEL + bptr_addr(addr)].keys[i] = key_; \
+	hbm[bptr_node(addr)*MAX_NODES_PER_LEVEL + bptr_addr(addr)].values[i].data = value_;
+#define SET_IKP(addr, i, key_, ptr_) \
+	hbm[bptr_node(addr)*MAX_NODES_PER_LEVEL + bptr_addr(addr)].keys[i] = key_; \
+	hbm[bptr_node(addr)*MAX_NODES_PER_LEVEL + bptr_addr(addr)].values[i].ptr = ptr_;
+//! @brief Declare a 2D memory view of a flat hbm array for use with core APIs.
+//! Usage: DECLARE_MEMORY_VIEW(memory, hbm) — creates Node *memory[MAX_LEVELS]
+#define DECLARE_MEMORY_VIEW(mem_, flat_) \
+	Node *mem_[MAX_LEVELS]; \
+	for (int _i_ = 0; _i_ < MAX_LEVELS; _i_++) mem_[_i_] = (flat_) + _i_ * MAX_NODES_PER_LEVEL;
 #define KERNEL_ARG_DECS \
-	Node *hbm, Request *req_buffer, Response *resp_buffer, \
+	bptr_t *root, Node *hbm, Request *req_buffer, Response *resp_buffer, \
 	int loop_max, int op_max, bool reset
 #define KERNEL_ARG_VARS \
-	hbm, req_buffer, resp_buffer, loop_max, op_max, reset
+	root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset
 
 
 //!@brief Print a hex dump of a section of HBM grouped by object
