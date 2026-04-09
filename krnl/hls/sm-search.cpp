@@ -8,6 +8,7 @@ extern "C" {
 union NodeWords {
 	Node        node;
 	ap_uint<64> words[(sizeof(Node) + 7) / 8];
+	NodeWords() {}
 };
 
 
