@@ -10,7 +10,7 @@ bool check_inserted_leaves(Node const *memory) {
 	int i = 0;
 
 	while (node.addr != INVALID) {
-		node.node = memory[node.addr];
+		node.node = memory[bptr_local_addr(node.addr)];
 		for (li_t j = 0; j < TREE_ORDER; ++j) {
 			if (node.node.keys[j] == INVALID) {
 				if (i == 0 && j == 0) {

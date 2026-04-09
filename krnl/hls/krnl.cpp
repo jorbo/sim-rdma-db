@@ -6,13 +6,18 @@
 
 
 void krnl(
-	bptr_t *root,
-	Node *hbm,
-	Request *req_buffer,
-	Response *resp_buffer,
-	int loop_max,
-	int op_max,
-	bool reset
+	bptr_t       *root,
+	Node         *hbm,
+	Request      *req_buffer,
+	Response     *resp_buffer,
+	int           loop_max,
+	int           op_max,
+	bool          reset,
+	node_id_t     my_node_id,
+	int           qpn_table[MAX_KRNL_NODES],
+	hls::stream<pkt256>& m_axis_tx_meta,
+	hls::stream<pkt64>&  m_axis_tx_data,
+	hls::stream<pkt64>&  s_axis_rx_data
 ) {
 	#pragma HLS INTERFACE m_axi port=root bundle=gmem1
 	#pragma HLS INTERFACE m_axi port=hbm bundle=gmem0
@@ -21,6 +26,11 @@ void krnl(
 	#pragma HLS INTERFACE s_axilite port=loop_max
 	#pragma HLS INTERFACE s_axilite port=op_max
 	#pragma HLS INTERFACE s_axilite port=reset
+	#pragma HLS INTERFACE s_axilite port=my_node_id
+	#pragma HLS INTERFACE s_axilite port=qpn_table
+	#pragma HLS INTERFACE axis port=m_axis_tx_meta
+	#pragma HLS INTERFACE axis port=m_axis_tx_data
+	#pragma HLS INTERFACE axis port=s_axis_rx_data
 
 	static hls::stream<Request> requests;
 	static hls::stream<Response> responses;
@@ -34,10 +44,6 @@ void krnl(
 	#pragma HLS stream variable=insertInput type=fifo depth=0x100
 	#pragma HLS stream variable=searchOutput type=fifo depth=0x100
 	#pragma HLS stream variable=insertOutput type=fifo depth=0x100
-
-	Node *memory[MAX_LEVELS];
-	for (int i = 0; i < MAX_LEVELS; i++)
-		memory[i] = hbm + i * MAX_NODES_PER_LEVEL;
 
 	static bptr_t current_root = bptr_make(0, 0);
 	uint_fast32_t step_count = 0;
@@ -53,13 +59,19 @@ void krnl(
 	while (ops_out < op_max && step_count++ < loop_max) {
 		sm_search(
 			current_root,
+			my_node_id,
+			hbm,
+			qpn_table,
 			searchInput, searchOutput,
-			(Node const **) memory
+			m_axis_tx_meta, s_axis_rx_data
 		);
 		sm_insert(
 			current_root,
+			my_node_id,
+			hbm,
+			qpn_table,
 			insertInput, insertOutput,
-			(Node **) memory
+			m_axis_tx_meta, m_axis_tx_data, s_axis_rx_data
 		);
 		sm_ramstream_req(requests, req_buffer);
 		sm_ramstream_resp(responses, resp_buffer);

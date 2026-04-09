@@ -5,6 +5,9 @@
 #include <ap_axi_sdata.h>
 
 
+//! Maximum number of remote nodes the HLS kernel can address via RDMA
+#define MAX_KRNL_NODES 16u
+
 typedef ap_axiu<512, 0, 0, 0> pkt512;
 typedef ap_axiu<256, 0, 0, 0> pkt256;
 typedef ap_axiu<128, 0, 0, 0> pkt128;

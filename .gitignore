@@ -13,3 +13,8 @@ host_exe
 emconfig.json
 _x*
 package.hw_emu/
+.claude/
+.claude-flow/
+.swarm/
+.mcp.json
+CLAUDE.md
