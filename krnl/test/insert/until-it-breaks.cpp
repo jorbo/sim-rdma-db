@@ -21,7 +21,7 @@ bool until_it_breaks(KERNEL_ARG_DECS) {
 
 	// Set up initial state
 	DECLARE_MEMORY_VIEW(memory, hbm)
-	mem_reset_all(memory);
+	{ mem_context_t _ctx = mem_context_local(0, hbm); mem_reset_all(&_ctx); }
 	reset_ramstream_offsets();
 	*root = bptr_make(0, 0);
 	// Should succeed
@@ -30,6 +30,7 @@ bool until_it_breaks(KERNEL_ARG_DECS) {
 	}
 
 	// Perform Operations
+	DECLARE_RDMA_ARGS
 	krnl(KERNEL_ARG_VARS);
 
 	// Evalue Results

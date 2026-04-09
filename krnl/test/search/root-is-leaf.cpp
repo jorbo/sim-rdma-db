@@ -20,8 +20,7 @@ bool root_is_leaf(KERNEL_ARG_DECS) {
 	uint_fast64_t offset = 0;
 
 	// Set up initial state
-	DECLARE_MEMORY_VIEW(memory, hbm)
-	mem_reset_all(memory);
+	{ mem_context_t _ctx = mem_context_local(0, hbm); mem_reset_all(&_ctx); }
 	reset_ramstream_offsets();
 	*root = root_addr;
 	SET_IKV(root_addr, 0, 1, 10)
@@ -42,6 +41,7 @@ bool root_is_leaf(KERNEL_ARG_DECS) {
 	hbm_dump((uint8_t*) resp_buffer, 0, sizeof(Response), 15);
 
 	// Perform Operations
+	DECLARE_RDMA_ARGS
 	krnl(KERNEL_ARG_VARS);
 
 	// Evalue Results

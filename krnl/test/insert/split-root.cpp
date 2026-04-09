@@ -21,7 +21,7 @@ bool split_root(KERNEL_ARG_DECS) {
 
 	// Set up initial state
 	DECLARE_MEMORY_VIEW(memory, hbm)
-	mem_reset_all(memory);
+	{ mem_context_t _ctx = mem_context_local(0, hbm); mem_reset_all(&_ctx); }
 	reset_ramstream_offsets();
 	*root = bptr_make(0, 0);
 	hbm_dump((uint8_t*) req_buffer, 0, sizeof(Request), 15);
@@ -34,6 +34,7 @@ bool split_root(KERNEL_ARG_DECS) {
 	INPUT_INSERT(4, -4)
 
 	// Perform Operations
+	DECLARE_RDMA_ARGS
 	krnl(KERNEL_ARG_VARS);
 	hbm_dump((uint8_t*) hbm, 0, sizeof(Node), 5);
 
