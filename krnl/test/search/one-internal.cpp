@@ -11,9 +11,9 @@ extern "C" {
 
 bool one_internal(KERNEL_ARG_DECS) {
 	bool pass = true;
-	const bptr_t root_addr = bptr_make(1, 0);
-	const bptr_t left_child = bptr_make(0, 1);
-	const bptr_t right_child = bptr_make(0, 2);
+	const bptr_t root_addr = bptr_make(0, MAX_LEAVES);  /* local_addr=MAX_LEAVES => internal node */
+	const bptr_t left_child = bptr_make(0, 0);
+	const bptr_t right_child = bptr_make(0, 1);
 	hls::stream<search_in_t> input_log;
 	uint_fast8_t ops_in, ops_out;
 	search_in_t last_in;
