@@ -1,8 +1,6 @@
 #include "sm-insert.hpp"
-extern "C" {
 #include "../core/insert.h"
 #include "../core/memory.h"
-};
 
 
 void sm_insert(

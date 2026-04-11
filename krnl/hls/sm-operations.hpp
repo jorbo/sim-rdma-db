@@ -3,9 +3,7 @@
 
 
 #include <hls_stream.h>
-extern "C" {
 #include "../core/operations.h"
-};
 
 
 //! @brief State machine to decode and redirect incoming instructions

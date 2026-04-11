@@ -3,10 +3,8 @@
 
 #include "rdma.hpp"
 #include <hls_stream.h>
-extern "C" {
 #include "../core/node.h"
 #include "../core/operations.h"
-};
 
 
 void krnl(

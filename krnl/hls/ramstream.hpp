@@ -2,10 +2,8 @@
 #define RAMSTREAM_HPP
 
 
-extern "C" {
 #include "../core/operations.h"
 #include "../core/defs.h"
-};
 #include <hls_stream.h>
 
 

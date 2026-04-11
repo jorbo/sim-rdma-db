@@ -1,7 +1,5 @@
 #include "sm-search.hpp"
-extern "C" {
 #include "../core/node.h"
-};
 
 
 //! Overlay a Node on an array of 64-bit words for stream-based reassembly.

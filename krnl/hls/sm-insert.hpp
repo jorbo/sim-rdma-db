@@ -2,9 +2,7 @@
 #define SM_INSERT_HPP
 
 
-extern "C" {
 #include "../core/node.h"
-};
 #ifdef HLS
 #include <hls_stream.h>
 #include "rdma.hpp"
