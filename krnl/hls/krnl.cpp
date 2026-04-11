@@ -19,10 +19,10 @@ void krnl(
 	hls::stream<pkt64>&  m_axis_tx_data,
 	hls::stream<pkt64>&  s_axis_rx_data
 ) {
-	#pragma HLS INTERFACE m_axi port=root bundle=gmem1
-	#pragma HLS INTERFACE m_axi port=hbm bundle=gmem0
-	#pragma HLS INTERFACE m_axi port=req_buffer bundle=gmem1
-	#pragma HLS INTERFACE m_axi port=resp_buffer bundle=gmem2
+	#pragma HLS INTERFACE m_axi port=root        bundle=gmem1 depth=1
+	#pragma HLS INTERFACE m_axi port=hbm         bundle=gmem0 depth=MEM_SIZE
+	#pragma HLS INTERFACE m_axi port=req_buffer  bundle=gmem1 depth=256
+	#pragma HLS INTERFACE m_axi port=resp_buffer bundle=gmem2 depth=256
 	#pragma HLS INTERFACE s_axilite port=loop_max
 	#pragma HLS INTERFACE s_axilite port=op_max
 	#pragma HLS INTERFACE s_axilite port=reset
