@@ -61,6 +61,8 @@ void sm_ramstream_resp(
 				state = IDLE;
 			}
 			break;
+		case RESET:
+			break;
 	}
 }
 
