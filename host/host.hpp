@@ -3,9 +3,11 @@
 
 
 #include "run-tree.hpp"
+#include "bootstrap.hpp"
 
 
-TreeOutput run_fpga_tree(TreeInput& input, std::string const& binaryFile);
+TreeOutput run_fpga_tree(TreeInput& input, const RdmaConfig& rdma,
+                         std::string const& binaryFile);
 
 
 #endif

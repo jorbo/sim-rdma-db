@@ -10,12 +10,14 @@ extern "C" {
 
 
 struct TreeInput {
+	bptr_t root;
 	std::vector<Request, aligned_allocator<Request> > requests;
 	std::vector<Node, aligned_allocator<Node> > memory;
 	TreeInput();
 };
 
 struct TreeOutput {
+	bptr_t root;
 	std::vector<Response, aligned_allocator<Response> > responses;
 	std::vector<Node, aligned_allocator<Node> > memory;
 	TreeOutput();

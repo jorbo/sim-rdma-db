@@ -5,11 +5,12 @@ extern "C" {
 };
 
 
-TreeInput::TreeInput() {
+TreeInput::TreeInput() : root(bptr_make(0, 0)) {
 	memory.resize(MEM_SIZE);
-	mem_reset_all(memory.data());
+	mem_context_t ctx = mem_context_local(0, memory.data());
+	mem_reset_all(&ctx);
 }
 
-TreeOutput::TreeOutput() {
+TreeOutput::TreeOutput() : root(bptr_make(0, 0)) {
 	memory.resize(MEM_SIZE);
 }

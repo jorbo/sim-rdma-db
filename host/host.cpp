@@ -1,4 +1,5 @@
 #include "host.hpp"
+#include "bootstrap.hpp"
 #include "myopencl.hpp"
 #include "device.hpp"
 extern "C" {
@@ -51,82 +52,96 @@ static void run_kernel(
 	cl::Context& context,
 	cl::Kernel& krnl1,
 	cl::CommandQueue& q,
+	bptr_t& root,
 	std::vector<Request, aligned_allocator<Request> >& requests,
 	std::vector<Response, aligned_allocator<Response> >& responses,
-	std::vector<Node, aligned_allocator<Node> >& memory
+	std::vector<Node, aligned_allocator<Node> >& memory,
+	const RdmaConfig& rdma
 ) {
 	constexpr int FROM_HOST_FLAGS = 0;
 	cl_int err;
 	clock_t htod, dtoh, comp;
 
-	// INPUT BUFFERS
-	OCL_CHECK(err, cl::Buffer buffer_requests(
+	// Mutable local copy of qpn_table for OpenCL buffer mapping.
+	int qpn_table[MAX_KRNL_NODES];
+	memcpy(qpn_table, rdma.qpn_table, sizeof(qpn_table));
+
+	// BUFFERS
+	OCL_CHECK(err, cl::Buffer buffer_root(
 		context,
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
-		sizeof(Request)*requests.size(),
-		requests.data(),
-		&err
-	));
-	// OUTPUT BUFFERS
-	OCL_CHECK(err, cl::Buffer buffer_responses(
-		context,
-		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
-		sizeof(Response)*responses.size(),
-		responses.data(),
-		&err
+		sizeof(bptr_t), &root, &err
 	));
 	OCL_CHECK(err, cl::Buffer buffer_memory(
 		context,
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
-		sizeof(Node)*memory.size(),
-		memory.data(),
-		&err
+		sizeof(Node)*memory.size(), memory.data(), &err
 	));
-	// SETTING INPUT PARAMETERS
-	OCL_CHECK(err, err = krnl1.setArg(0, buffer_memory));
-	OCL_CHECK(err, err = krnl1.setArg(1, buffer_requests));
-	OCL_CHECK(err, err = krnl1.setArg(2, buffer_responses));
-	OCL_CHECK(err, err = krnl1.setArg(3, (uint32_t) (6*requests.size())));
-	OCL_CHECK(err, err = krnl1.setArg(4, (uint32_t) (1.25*requests.size())));
-	OCL_CHECK(err, err = krnl1.setArg(5, true));
+	OCL_CHECK(err, cl::Buffer buffer_requests(
+		context,
+		CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
+		sizeof(Request)*requests.size(), requests.data(), &err
+	));
+	OCL_CHECK(err, cl::Buffer buffer_responses(
+		context,
+		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
+		sizeof(Response)*responses.size(), responses.data(), &err
+	));
+	OCL_CHECK(err, cl::Buffer buffer_qpn_table(
+		context,
+		CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
+		sizeof(qpn_table), qpn_table, &err
+	));
 
-	// HOST -> DEVICE DATA TRANSFER
+	// KERNEL ARGS (must match krnl() parameter order)
+	int loop_max = 6 * (int)requests.size();
+	int op_max   = (int)(1.25 * requests.size());
+	OCL_CHECK(err, err = krnl1.setArg(0, buffer_root));
+	OCL_CHECK(err, err = krnl1.setArg(1, buffer_memory));
+	OCL_CHECK(err, err = krnl1.setArg(2, buffer_requests));
+	OCL_CHECK(err, err = krnl1.setArg(3, buffer_responses));
+	OCL_CHECK(err, err = krnl1.setArg(4, loop_max));
+	OCL_CHECK(err, err = krnl1.setArg(5, op_max));
+	OCL_CHECK(err, err = krnl1.setArg(6, true));
+	OCL_CHECK(err, err = krnl1.setArg(7, (uint8_t)rdma.my_node_id));
+	OCL_CHECK(err, err = krnl1.setArg(8, buffer_qpn_table));
+
+	// HOST -> DEVICE
 	std::cout << "HOST -> DEVICE" << std::endl;
 	htod = clock();
 	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-		{buffer_requests}, FROM_HOST_FLAGS
-	));
-	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-		{buffer_memory}, FROM_HOST_FLAGS
+		{buffer_root, buffer_memory, buffer_requests, buffer_qpn_table},
+		FROM_HOST_FLAGS
 	));
 	q.finish();
 	htod = clock() - htod;
-	// STARTING KERNEL(S)
+
+	// RUN
 	std::cout << "STARTING KERNEL(S)" << std::endl;
 	comp = clock();
 	OCL_CHECK(err, err = q.enqueueTask(krnl1));
 	q.finish();
 	comp = clock() - comp;
 	std::cout << "KERNEL(S) FINISHED" << std::endl;
-	// DEVICE -> HOST DATA TRANSFER
+
+	// DEVICE -> HOST (root can be updated by the kernel on tree splits)
 	std::cout << "HOST <- DEVICE" << std::endl;
 	dtoh = clock();
 	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-		{buffer_memory}, CL_MIGRATE_MEM_OBJECT_HOST
-	));
-	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-		{buffer_responses}, CL_MIGRATE_MEM_OBJECT_HOST
+		{buffer_root, buffer_memory, buffer_responses},
+		CL_MIGRATE_MEM_OBJECT_HOST
 	));
 	q.finish();
 	dtoh = clock() - dtoh;
 
 	printf("Host -> Device : %lf ms\n", 1000.0 * htod/CLOCKS_PER_SEC);
 	printf("Device -> Host : %lf ms\n", 1000.0 * dtoh/CLOCKS_PER_SEC);
-	printf("Computation : %lf ms\n",  1000.0 * comp/CLOCKS_PER_SEC);
+	printf("Computation    : %lf ms\n", 1000.0 * comp/CLOCKS_PER_SEC);
 }
 
 
-TreeOutput run_fpga_tree(TreeInput& input, std::string const& binaryFile) {
+TreeOutput run_fpga_tree(TreeInput& input, const RdmaConfig& rdma,
+                         std::string const& binaryFile) {
 	cl::Context context;
 	cl::Kernel krnl;
 	cl::CommandQueue q;
@@ -137,9 +152,10 @@ TreeOutput run_fpga_tree(TreeInput& input, std::string const& binaryFile) {
 	setup_ocl(binaryFile, context, krnl, q);
 	run_kernel(
 		context, krnl, q,
-		input.requests, output.responses, input.memory
+		input.root, input.requests, output.responses, input.memory, rdma
 	);
 	memcpy(output.memory.data(), input.memory.data(), MEM_SIZE*sizeof(Node));
+	output.root = input.root; // root may have been updated by splits
 
 	return output;
 }

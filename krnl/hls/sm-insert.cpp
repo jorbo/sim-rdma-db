@@ -21,6 +21,6 @@ void sm_insert(
 	if (!input.empty()) {
 		input.read(pair);
 		mem_context_t ctx = mem_context_local(local_id, hbm);
-		output.write(insert(&root, pair.key, pair.value, &ctx));
+		output.write(insert(&root, pair.key, pair.value, &ctx HBM_ARG));
 	}
 }
