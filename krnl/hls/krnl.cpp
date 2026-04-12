@@ -28,7 +28,7 @@ void krnl(
 	#pragma HLS INTERFACE s_axilite port=op_max
 	#pragma HLS INTERFACE s_axilite port=reset
 	#pragma HLS INTERFACE s_axilite port=my_node_id
-	#pragma HLS INTERFACE s_axilite port=qpn_table
+	#pragma HLS INTERFACE m_axi     port=qpn_table bundle=gmem4 depth=MAX_KRNL_NODES
 	#pragma HLS INTERFACE axis port=m_axis_tx_meta
 	#pragma HLS INTERFACE axis port=m_axis_tx_data
 	#pragma HLS INTERFACE axis port=s_axis_rx_data
