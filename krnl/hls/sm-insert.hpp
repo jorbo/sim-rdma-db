@@ -26,10 +26,8 @@ void sm_insert(
 	hls::stream<insert_in_t>&  input,
 	//! [out]   Status codes from inserts
 	hls::stream<insert_out_t>& output,
-	//! [out]   RDMA metadata stream for outgoing WRITE commands
+	//! [out]   RDMA metadata stream for outgoing WRITE commands (reserved for future RDMA write)
 	hls::stream<pkt256>&       m_axis_tx_meta,
-	//! [out]   RDMA data stream for outgoing inline WRITE payloads
-	hls::stream<pkt64>&        m_axis_tx_data,
 	//! [in]    RDMA receive stream carrying remote READ response data
 	hls::stream<pkt64>&        s_axis_rx_data
 );

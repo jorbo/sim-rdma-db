@@ -16,7 +16,6 @@ void krnl(
 	node_id_t     my_node_id,
 	int           qpn_table[MAX_KRNL_NODES],
 	hls::stream<pkt256>& m_axis_tx_meta,
-	hls::stream<pkt64>&  m_axis_tx_data,
 	hls::stream<pkt64>&  s_axis_rx_data
 ) {
 	#pragma HLS INTERFACE m_axi port=root        bundle=gmem3 depth=1
@@ -30,7 +29,6 @@ void krnl(
 	#pragma HLS INTERFACE s_axilite port=my_node_id
 	#pragma HLS INTERFACE m_axi     port=qpn_table bundle=gmem4 depth=MAX_KRNL_NODES
 	#pragma HLS INTERFACE axis port=m_axis_tx_meta
-	#pragma HLS INTERFACE axis port=m_axis_tx_data
 	#pragma HLS INTERFACE axis port=s_axis_rx_data
 
 	static hls::stream<Request> requests;
@@ -76,7 +74,7 @@ void krnl(
 			hbm,
 			qpn_table,
 			insertInput, insertOutput,
-			m_axis_tx_meta, m_axis_tx_data, s_axis_rx_data
+			m_axis_tx_meta, s_axis_rx_data
 		);
 		sm_ramstream_req(requests, req_buffer, false);
 		sm_ramstream_resp(responses, resp_buffer, false);

@@ -11,12 +11,10 @@ void sm_insert(
 	hls::stream<insert_in_t>&  input,
 	hls::stream<insert_out_t>& output,
 	hls::stream<pkt256>&       m_axis_tx_meta,
-	hls::stream<pkt64>&        m_axis_tx_data,
 	hls::stream<pkt64>&        s_axis_rx_data
 ) {
 	(void)qpn_table;
 	(void)m_axis_tx_meta;
-	(void)m_axis_tx_data;
 	(void)s_axis_rx_data;
 
 	KvPair pair;

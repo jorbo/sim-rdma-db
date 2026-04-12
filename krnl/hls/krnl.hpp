@@ -31,8 +31,6 @@ void krnl(
 	int           qpn_table[MAX_KRNL_NODES],
 	//! [out]   RDMA metadata stream for outgoing READ/WRITE commands
 	hls::stream<pkt256>& m_axis_tx_meta,
-	//! [out]   RDMA data stream for outgoing inline WRITE payloads
-	hls::stream<pkt64>&  m_axis_tx_data,
 	//! [in]    RDMA receive stream carrying incoming READ response data
 	hls::stream<pkt64>&  s_axis_rx_data
 );

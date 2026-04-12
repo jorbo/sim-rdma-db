@@ -34,11 +34,10 @@ extern "C" {
 	node_id_t my_node_id = 0; \
 	int qpn_table[MAX_KRNL_NODES] = {}; \
 	hls::stream<pkt256> m_axis_tx_meta; \
-	hls::stream<pkt64>  m_axis_tx_data; \
 	hls::stream<pkt64>  s_axis_rx_data;
 #define KERNEL_ARG_VARS \
 	root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset, \
-	my_node_id, qpn_table, m_axis_tx_meta, m_axis_tx_data, s_axis_rx_data
+	my_node_id, qpn_table, m_axis_tx_meta, s_axis_rx_data
 
 
 //!@brief Print a hex dump of a section of HBM grouped by object
