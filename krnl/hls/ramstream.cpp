@@ -2,16 +2,21 @@
 #include <iostream>
 
 
-static uint_fast64_t req_offset = 0;
-static uint_fast64_t resp_offset = 0;
-
-
 void sm_ramstream_req(
 	hls::stream<Request>& requests,
-	Request *req_buffer
+	Request *req_buffer,
+	bool do_reset
 ) {
+	#pragma HLS INLINE
 	static enum {IDLE, READ, DONE} state = IDLE;
+	static int req_offset = 0;
 	Request req;
+
+	if (do_reset) {
+		state = IDLE;
+		req_offset = 0;
+		return;
+	}
 
 	switch (state) {
 		case IDLE:
@@ -24,18 +29,13 @@ void sm_ramstream_req(
 					state = DONE;
 				} else {
 					requests.write(req);
-					// Buffer overrun
-					if (req_offset >= NUM_REQUESTS*sizeof(Request)) {
+					if (req_offset >= NUM_REQUESTS) {
 						state = DONE;
 					}
 				}
 			}
 			break;
 		case DONE:
-			// A reset has occurred
-			if (req_offset == 0) {
-				state = IDLE;
-			}
 			break;
 	}
 }
@@ -43,10 +43,19 @@ void sm_ramstream_req(
 
 void sm_ramstream_resp(
 	hls::stream<Response>& responses,
-	Response *resp_buffer
+	Response *resp_buffer,
+	bool do_reset
 ) {
-	static enum {IDLE, WRITE, RESET} state = IDLE;
+	#pragma HLS INLINE
+	static enum {IDLE, WRITE} state = IDLE;
+	static int resp_offset = 0;
 	Response resp;
+
+	if (do_reset) {
+		state = IDLE;
+		resp_offset = 0;
+		return;
+	}
 
 	switch (state) {
 		case IDLE:
@@ -61,13 +70,12 @@ void sm_ramstream_resp(
 				state = IDLE;
 			}
 			break;
-		case RESET:
-			break;
 	}
 }
 
 
 void reset_ramstream_offsets() {
-	req_offset = 0;
-	resp_offset = 0;
+	// No-op: reset is now handled via do_reset inside the kernel's reset path,
+	// which correctly updates RTL registers in cosim. This stub is kept so
+	// existing testbench code that calls reset_ramstream_offsets() still compiles.
 }

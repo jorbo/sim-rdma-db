@@ -55,6 +55,10 @@ void krnl(
 		ops_in = 0;
 		ops_out = 0;
 		current_root = *root;
+		// Reset ramstream state via RTL-visible registers so that cosim
+		// multi-invocation runs start from a clean offset/state each time.
+		sm_ramstream_req(requests, req_buffer, true);
+		sm_ramstream_resp(responses, resp_buffer, true);
 	}
 
 	while (ops_out < op_max && step_count++ < loop_max) {
@@ -74,8 +78,8 @@ void krnl(
 			insertInput, insertOutput,
 			m_axis_tx_meta, m_axis_tx_data, s_axis_rx_data
 		);
-		sm_ramstream_req(requests, req_buffer);
-		sm_ramstream_resp(responses, resp_buffer);
+		sm_ramstream_req(requests, req_buffer, false);
+		sm_ramstream_resp(responses, resp_buffer, false);
 		sm_decode(requests, searchInput, insertInput, ops_in);
 		sm_encode(responses, searchOutput, insertOutput, ops_out);
 	}
