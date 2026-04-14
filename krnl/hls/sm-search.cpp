@@ -73,6 +73,7 @@ void sm_search(
 
 	// Traverse inner nodes, fetching each from local HBM or via RDMA.
 	while (!is_leaf(ptr)) {
+		#pragma HLS loop_tripcount max=MAX_LEVELS
 		Node n = fetch_node(ptr, local_id, hbm, qpn_table, m_axis_tx_meta, s_axis_rx_data);
 		result = find_next(&n, key);
 		if (result.status != SUCCESS) {

@@ -7,7 +7,6 @@ void sm_ramstream_req(
 	Request *req_buffer,
 	bool do_reset
 ) {
-	#pragma HLS INLINE
 	static enum {IDLE, READ, DONE} state = IDLE;
 	static int req_offset = 0;
 	Request req;
@@ -46,7 +45,6 @@ void sm_ramstream_resp(
 	Response *resp_buffer,
 	bool do_reset
 ) {
-	#pragma HLS INLINE
 	static enum {IDLE, WRITE} state = IDLE;
 	static int resp_offset = 0;
 	Response resp;
