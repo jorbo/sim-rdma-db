@@ -31,12 +31,12 @@ void krnl(
 	#pragma HLS INTERFACE axis port=m_axis_tx_meta depth=64
 	#pragma HLS INTERFACE axis port=s_axis_rx_data depth=64
 
-	static hls::stream<Request> requests;
-	static hls::stream<Response> responses;
-	static hls::stream<search_in_t> searchInput;
-	static hls::stream<insert_in_t> insertInput;
-	static hls::stream<search_out_t> searchOutput;
-	static hls::stream<insert_out_t> insertOutput;
+	hls::stream<Request> requests;
+	hls::stream<Response> responses;
+	hls::stream<search_in_t> searchInput;
+	hls::stream<insert_in_t> insertInput;
+	hls::stream<search_out_t> searchOutput;
+	hls::stream<insert_out_t> insertOutput;
 	#pragma HLS stream variable=requests type=fifo depth=0x100
 	#pragma HLS stream variable=responses type=fifo depth=0x100
 	#pragma HLS stream variable=searchInput type=fifo depth=0x100
