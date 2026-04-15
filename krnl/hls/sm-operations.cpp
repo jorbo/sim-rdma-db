@@ -9,8 +9,7 @@ void sm_decode(
 ) {
 	Request req;
 	KvPair pair;
-	if (!requests.empty()) {
-		requests.read(req);
+	if (requests.read_nb(req)) {
 		switch (req.opcode) {
 			case SEARCH:
 				searchInput.write(req.search);
@@ -33,13 +32,11 @@ void sm_encode(
 	search_out_t searchResultRaw;
 	insert_out_t insertResultRaw;
 	Response searchResultEnc, insertResultEnc;
-	if (!searchOutput.empty()) {
-		searchOutput.read(searchResultRaw);
+	if (searchOutput.read_nb(searchResultRaw)) {
 		responses.write(encode_search_resp(searchResultRaw));
 		opsOut++;
 	}
-	if (!insertOutput.empty()) {
-		insertOutput.read(insertResultRaw);
+	if (insertOutput.read_nb(insertResultRaw)) {
 		responses.write(encode_insert_resp(insertResultRaw));
 		opsOut++;
 	}

@@ -19,8 +19,7 @@ void sm_insert(
 
 	KvPair pair;
 
-	if (!input.empty()) {
-		input.read(pair);
+	if (input.read_nb(pair)) {
 		mem_context_t ctx = mem_context_local(local_id, hbm);
 #ifdef __SYNTHESIS__
 		output.write(insert(&root, pair.key, pair.value, &ctx, hbm));

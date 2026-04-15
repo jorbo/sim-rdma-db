@@ -22,15 +22,17 @@ void sm_ramstream_req(
 			state = READ;
 			break;
 		case READ:
-			if (!requests.full()) {
-				req = req_buffer[req_offset++];
-				if (req.opcode == NOP) {
-					state = DONE;
-				} else {
-					requests.write(req);
+			req = req_buffer[req_offset++];
+			if (req.opcode == NOP) {
+				state = DONE;
+			} else {
+				if (requests.write_nb(req)) {
 					if (req_offset >= NUM_REQUESTS) {
 						state = DONE;
 					}
+				} else {
+					// FIFO full — back off and retry same entry next cycle
+					req_offset--;
 				}
 			}
 			break;
@@ -57,15 +59,9 @@ void sm_ramstream_resp(
 
 	switch (state) {
 		case IDLE:
-			if (!responses.empty()) {
-				state = WRITE;
-			}
-			break;
 		case WRITE:
-			responses.read(resp);
-			resp_buffer[resp_offset++] = resp;
-			if (responses.empty()) {
-				state = IDLE;
+			if (responses.read_nb(resp)) {
+				resp_buffer[resp_offset++] = resp;
 			}
 			break;
 	}

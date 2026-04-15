@@ -65,9 +65,8 @@ void sm_search(
 	hls::stream<pkt256>&       m_axis_tx_meta,
 	hls::stream<pkt64>&        s_axis_rx_data
 ) {
-	if (input.empty()) return;
-
-	bkey_t       key = input.read();
+	bkey_t key;
+	if (!input.read_nb(key)) return;
 	bptr_t       ptr = root;
 	bstatusval_t result;
 
