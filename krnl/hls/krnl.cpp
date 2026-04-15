@@ -39,9 +39,6 @@ void krnl(
 	if (reset) {
 		persistent_root = *root;
 	}
-	bptr_t root_for_search = persistent_root;
-	bptr_t root_for_insert = persistent_root;
-
 	// Bound the number of requests by the caller-supplied op_max (clamped to
 	// NUM_REQUESTS). sm_ramstream_req stops early at the first NOP regardless.
 	int num_requests = op_max;
@@ -50,34 +47,32 @@ void krnl(
 	}
 	(void)loop_max; // No longer needed: DATAFLOW self-terminates on `last`.
 
-	hls::stream<req_tagged_t>         requests;
-	hls::stream<resp_tagged_t>        responses;
-	hls::stream<search_tagged_in_t>   searchInput;
-	hls::stream<insert_tagged_in_t>   insertInput;
-	hls::stream<search_tagged_out_t>  searchOutput;
-	hls::stream<insert_tagged_out_t>  insertOutput;
-	#pragma HLS stream variable=requests     type=fifo depth=0x100
-	#pragma HLS stream variable=responses    type=fifo depth=0x100
-	#pragma HLS stream variable=searchInput  type=fifo depth=0x100
-	#pragma HLS stream variable=insertInput  type=fifo depth=0x100
-	#pragma HLS stream variable=searchOutput type=fifo depth=0x100
-	#pragma HLS stream variable=insertOutput type=fifo depth=0x100
+	bptr_t root_for_search = persistent_root;
+	bptr_t root_for_insert = persistent_root;
 
-	#pragma HLS DATAFLOW
-	sm_ramstream_req(requests, req_buffer, num_requests);
-	sm_decode(requests, searchInput, insertInput);
-	sm_search(
-		root_for_search, my_node_id, hbm, qpn_table,
-		searchInput, searchOutput,
-		m_axis_tx_meta, s_axis_rx_data
-	);
-	sm_insert(
-		root_for_insert, my_node_id, hbm, qpn_table,
-		insertInput, insertOutput,
-		m_axis_tx_meta, s_axis_rx_data
-	);
-	sm_encode(responses, searchOutput, insertOutput);
-	sm_ramstream_resp(responses, resp_buffer);
+	// --- canonical DATAFLOW block ---
+	{
+		#pragma HLS DATAFLOW
+		hls::stream<req_tagged_t>         requests;
+		hls::stream<resp_tagged_t>        responses;
+		hls::stream<search_tagged_in_t>   searchInput;
+		hls::stream<insert_tagged_in_t>   insertInput;
+		hls::stream<search_tagged_out_t>  searchOutput;
+		hls::stream<insert_tagged_out_t>  insertOutput;
+		#pragma HLS stream variable=requests     type=fifo depth=0x100
+		#pragma HLS stream variable=responses    type=fifo depth=0x100
+		#pragma HLS stream variable=searchInput  type=fifo depth=0x100
+		#pragma HLS stream variable=insertInput  type=fifo depth=0x100
+		#pragma HLS stream variable=searchOutput type=fifo depth=0x100
+		#pragma HLS stream variable=insertOutput type=fifo depth=0x100
+
+		sm_ramstream_req(requests, req_buffer, num_requests);
+		sm_decode(requests, searchInput, insertInput);
+		sm_search(root_for_search, my_node_id, hbm, qpn_table, searchInput, searchOutput, m_axis_tx_meta, s_axis_rx_data);
+		sm_insert(root_for_insert, my_node_id, hbm, qpn_table, insertInput, insertOutput, m_axis_tx_meta, s_axis_rx_data);
+		sm_encode(responses, searchOutput, insertOutput);
+		sm_ramstream_resp(responses, resp_buffer);
+	}
 
 	// Propagate any root change made by sm_insert back to the persistent
 	// register and to the m_axi-backed scalar.
