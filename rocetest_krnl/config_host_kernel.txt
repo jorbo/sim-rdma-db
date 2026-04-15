@@ -1,0 +1,11 @@
+[connectivity]
+nk=cmac_krnl:1:cmac_krnl_1
+nk=roce_host:1:roce_host_1
+
+slr=cmac_krnl_1:SLR2
+
+#sp=roce_host_1.m00_axi:HBM[30]
+sp=roce_host_1.m00_axi:HOST[0]
+
+sc=cmac_krnl_1.axis_net_rx:roce_host_1.s_axis_net_rx
+sc=roce_host_1.m_axis_net_tx:cmac_krnl_1.axis_net_tx

@@ -17,3 +17,4 @@ if (NOT VITIS_HLS_FOUND)
 endif()
 
 add_subdirectory(krnl)
+add_subdirectory(fpga-network-stack)
