@@ -20,28 +20,65 @@
 #endif
 
 
-//! @brief Convert a DRAM buffer of requests to an HLS stream
+//! Tagged stream element for requests flowing through the DATAFLOW pipeline.
+//! `last` marks the final element in the stream; downstream processes terminate
+//! after observing it. The payload may be valid or a pure sentinel — check
+//! opcode against NOP if the process needs to ignore empty flushes.
+struct req_tagged_t {
+	Request req;
+	bool    last;
+};
+
+//! Tagged stream element for decoded search inputs. `last` marks terminator.
+//! `has_payload` is false for a pure terminator sentinel used when no search
+//! ops were present in this invocation (so that sm_search still runs exactly
+//! one iteration and exits cleanly).
+struct search_tagged_in_t {
+	search_in_t key;
+	bool        last;
+	bool        has_payload;
+};
+
+struct insert_tagged_in_t {
+	KvPair pair;
+	bool   last;
+	bool   has_payload;
+};
+
+struct search_tagged_out_t {
+	search_out_t val;
+	bool         last;
+	bool         has_payload;
+};
+
+struct insert_tagged_out_t {
+	insert_out_t status;
+	bool         last;
+	bool         has_payload;
+};
+
+struct resp_tagged_t {
+	Response resp;
+	bool     last;
+	bool     has_payload;
+};
+
+
+//! @brief Read requests from DRAM into a tagged stream. Sets `last=true` on
+//!        the final item so downstream processes can exit.
 void sm_ramstream_req(
-	//! [out] Streams of requests decoded from memory
-	hls::stream<Request>& requests,
-	//! [in]  Pointer to high bandwidth memory
+	hls::stream<req_tagged_t>& requests,
 	Request *req_buffer,
-	//! [in]  When true, reset internal offset and state (must be called before loop)
-	bool do_reset
+	int num_requests
 );
 
-//! @brief Write an HLS stream of responses to a DRAM buffer
+//! @brief Drain responses from a tagged stream to DRAM. Terminates on `last`.
 void sm_ramstream_resp(
-	//! [in]  Streams of responses to be encoded in memory
-	hls::stream<Response>& responses,
-	//! [out] Pointer to high bandwidth memory
-	Response *resp_buffer,
-	//! [in]  When true, reset internal offset and state (must be called before loop)
-	bool do_reset
+	hls::stream<resp_tagged_t>& responses,
+	Response *resp_buffer
 );
 
-//! @brief No-op kept for backward compatibility. Reset is now handled via
-//!        do_reset parameter inside the kernel's reset path.
+//! @brief No-op kept for backward compatibility with existing testbench code.
 void reset_ramstream_offsets();
 
 

@@ -10,12 +10,6 @@ union NodeWords {
 };
 
 
-//! @brief Fetch a single Node by encoded address.
-//!
-//! If the node_id embedded in @p addr matches @p local_id the node is read
-//! directly from @p hbm.  Otherwise an RDMA READ command is issued on
-//! @p tx_meta and the response is reassembled from consecutive 64-bit flits
-//! on @p rx_data.
 static Node fetch_node(
 	bptr_t       addr,
 	node_id_t    local_id,
@@ -32,8 +26,6 @@ static Node fetch_node(
 		return hbm[laddr];
 	}
 
-	// Issue one-sided RDMA READ: fetch sizeof(Node) bytes from the remote
-	// FPGA's HBM at byte offset laddr*sizeof(Node).
 	ap_uint<64> raddr = (ap_uint<64>)laddr * sizeof(Node);
 	rdma_bram_read(
 		(ap_uint<24>)qpn_table[nid],
@@ -43,7 +35,6 @@ static Node fetch_node(
 		tx_meta
 	);
 
-	// Reassemble the Node from consecutive 64-bit receive flits.
 	NodeWords buf;
 	const int nwords = (sizeof(Node) + 7) / 8;
 	for (int i = 0; i < nwords; i++) {
@@ -55,34 +46,58 @@ static Node fetch_node(
 }
 
 
+static bstatusval_t search_one(
+	bkey_t key,
+	bptr_t root,
+	node_id_t local_id,
+	Node *hbm,
+	int qpn_table[MAX_KRNL_NODES],
+	hls::stream<pkt256>& tx_meta,
+	hls::stream<pkt64>&  rx_data
+) {
+	bptr_t       ptr = root;
+	bstatusval_t result;
+
+	while (!is_leaf(ptr)) {
+		#pragma HLS loop_tripcount max=MAX_LEVELS
+		Node n = fetch_node(ptr, local_id, hbm, qpn_table, tx_meta, rx_data);
+		result = find_next(&n, key);
+		if (result.status != SUCCESS) {
+			return result;
+		}
+		ptr = result.value.ptr;
+	}
+
+	Node leaf = fetch_node(ptr, local_id, hbm, qpn_table, tx_meta, rx_data);
+	return find_value(&leaf, key);
+}
+
+
 void sm_search(
 	bptr_t const&  root,
 	node_id_t      local_id,
 	Node          *hbm,
 	int            qpn_table[MAX_KRNL_NODES],
-	hls::stream<search_in_t>&  input,
-	hls::stream<search_out_t>& output,
-	hls::stream<pkt256>&       m_axis_tx_meta,
-	hls::stream<pkt64>&        s_axis_rx_data
+	hls::stream<search_tagged_in_t>&  input,
+	hls::stream<search_tagged_out_t>& output,
+	hls::stream<pkt256>&              m_axis_tx_meta,
+	hls::stream<pkt64>&               s_axis_rx_data
 ) {
-	bkey_t key;
-	if (!input.read_nb(key)) return;
-	bptr_t       ptr = root;
-	bstatusval_t result;
+	search_loop: for (;;) {
+		#pragma HLS loop_tripcount max=NUM_REQUESTS
+		search_tagged_in_t in = input.read();
 
-	// Traverse inner nodes, fetching each from local HBM or via RDMA.
-	while (!is_leaf(ptr)) {
-		#pragma HLS loop_tripcount max=MAX_LEVELS
-		Node n = fetch_node(ptr, local_id, hbm, qpn_table, m_axis_tx_meta, s_axis_rx_data);
-		result = find_next(&n, key);
-		if (result.status != SUCCESS) {
-			output.write(result);
-			return;
+		search_tagged_out_t out;
+		out.last        = in.last;
+		out.has_payload = in.has_payload;
+		out.val         = search_out_t();
+
+		if (in.has_payload) {
+			out.val = search_one(in.key, root, local_id, hbm, qpn_table,
+			                     m_axis_tx_meta, s_axis_rx_data);
 		}
-		ptr = result.value.ptr;
-	}
+		output.write(out);
 
-	// Read and search the leaf node.
-	Node leaf = fetch_node(ptr, local_id, hbm, qpn_table, m_axis_tx_meta, s_axis_rx_data);
-	output.write(find_value(&leaf, key));
+		if (in.last) break;
+	}
 }
