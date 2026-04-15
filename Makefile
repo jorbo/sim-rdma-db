@@ -58,15 +58,22 @@ TARGET := hw
 HOST_ARCH := x86
 SYSROOT :=
 
+SERVER ?= 0
+ifeq ($(filter $(SERVER),0 1),)
+$(error SERVER must be 0 (table node) or 1 (head node), got '$(SERVER)')
+endif
+CONFIG_FILE := config.server$(SERVER).cfg
+
 include ./utils.mk
 
 XSA :=
 ifneq ($(PLATFORM), )
 XSA := $(call device2xsa, $(PLATFORM))
 endif
-TEMP_DIR := ./_x.$(TARGET).$(XSA)
-BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
-IP_REPO := ./build/iprepo
+TEMP_DIR := ./_x.$(TARGET).$(XSA).server$(SERVER)
+BUILD_DIR := ./build_dir.$(TARGET).$(XSA).server$(SERVER)
+IP_REPO := $(abspath build/iprepo)
+export IPREPO_DIR := $(IP_REPO)
 # SoC variables
 RUN_APP_SCRIPT = ./run_app.sh
 PACKAGE_OUT = ./package.$(TARGET)
@@ -103,7 +110,7 @@ endif
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps -I$(INCLUDES) --config config.cfg -DHLS
+VPP_FLAGS += -t $(TARGET) --platform $(PLATFORM) --save-temps -I$(INCLUDES) --config $(CONFIG_FILE) -DHLS
 ifneq ($(TARGET), hw)
 	VPP_FLAGS += -g
 endif
@@ -129,33 +136,51 @@ all: check-platform check-device check-vitis $(EXECUTABLE) $(BINARY_CONTAINERS) 
 host: $(EXECUTABLE)
 
 .PHONY: build
-build: check-vitis check-device $(BINARY_CONTAINERS)
+build: check-vitis check-device $(IP_REPO)/krnl.xo $(BINARY_CONTAINERS)
 
 .PHONY: xclbin
 xclbin: build
 
+############################## installip — package all .xo into $(IP_REPO) ##############################
+.PHONY: installip installip-hls installip-rocetest installip-cmac
+installip: installip-hls installip-rocetest installip-cmac
+
+# 1) HLS IPs: krnl + fpga-network-stack submodules (arp, toe, udp, rocev2, hash_table, ...)
+installip-hls:
+	mkdir -p build $(IP_REPO)
+	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO)
+	$(MAKE) -C build installip
+
+# 2) rocetest_krnl RTL kernel — packaged via Vivado Tcl
+installip-rocetest:
+	mkdir -p $(IP_REPO)
+	cd rocetest_krnl && IPREPOPATH=$(IP_REPO) vivado -mode batch -source package_rocetest_krnl.tcl
+	cp rocetest_krnl/rocetest_krnl.xo $(IP_REPO)/
+
+# 3) cmac_krnl RTL kernel — packaged via Vivado Tcl
+installip-cmac:
+	mkdir -p $(IP_REPO)
+	cd cmac_krnl && IPREPOPATH=$(IP_REPO) vivado -mode batch -source package_cmac_krnl.tcl
+	cp cmac_krnl/cmac_krnl.xo $(IP_REPO)/
+
+# Trigger installip when iprepo is missing krnl.xo
+$(IP_REPO)/krnl.xo:
+	$(MAKE) installip
+
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
-$(TEMP_DIR)/krnl.xo: $(wildcard krnl/hls/*.cpp) \
-	krnl/core/insert-helpers.c \
-	krnl/core/insert.c \
-	krnl/core/memory.c \
-	krnl/core/node.c \
-	krnl/core/operations.c \
-	krnl/core/search.c \
-	krnl/core/split.c \
-	krnl/core/tree-helpers.c
-	mkdir -p $(TEMP_DIR)
-	$(VPP) $(VPP_FLAGS) -c -k $(KRNL) --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' $^
-BINARY_CONTAINER_krnl_OBJS += $(TEMP_DIR)/krnl.xo
-# BINARY_CONTAINER_krnl_OBJS += $(IP_REPO)/krnl.xo
+# All .xo's come from $(IP_REPO), staged by `make installip`.
+BINARY_CONTAINER_krnl_OBJS := \
+	$(IP_REPO)/krnl.xo \
+	$(IP_REPO)/rocetest_krnl.xo \
+	$(IP_REPO)/cmac_krnl.xo
 
 $(BUILD_DIR)/krnl.xclbin: $(BINARY_CONTAINER_krnl_OBJS)
 	mkdir -p $(BUILD_DIR)
 ifeq ($(HOST_ARCH), x86)
-	$(VPP) $(VPP_FLAGS) -l $(VPP_LDFLAGS) --temp_dir $(TEMP_DIR) -o'$(BUILD_DIR)/krnl.link.xclbin' $(+)
+	$(VPP) $(VPP_FLAGS) -l $(VPP_LDFLAGS) --user_ip_repo_paths $(IP_REPO) --temp_dir $(TEMP_DIR) -o'$(BUILD_DIR)/krnl.link.xclbin' $(+)
 	$(VPP) -p $(BUILD_DIR)/krnl.link.xclbin -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/krnl.xclbin
 else
-	$(VPP) $(VPP_FLAGS) -l $(VPP_LDFLAGS) --temp_dir $(TEMP_DIR) -o'$(BUILD_DIR)/krnl.xclbin' $(+)
+	$(VPP) $(VPP_FLAGS) -l $(VPP_LDFLAGS) --user_ip_repo_paths $(IP_REPO) --temp_dir $(TEMP_DIR) -o'$(BUILD_DIR)/krnl.xclbin' $(+)
 endif
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
@@ -221,3 +246,6 @@ cleanall: clean
 	-$(RMDIR) build_dir* sd_card*
 	-$(RMDIR) package.*
 	-$(RMDIR) _x* *xclbin.run_summary qemu-memory-_* emulation _vimage pl* start_simulation.sh *.xclbin
+	-$(RMDIR) build/iprepo build/CMakeFiles build/CMakeCache.txt build/Makefile build/cmake_install.cmake
+	-$(RMDIR) rocetest_krnl/tmp_kernel_pack_* rocetest_krnl/*.xo rocetest_krnl/*.log rocetest_krnl/*.jou
+	-$(RMDIR) cmac_krnl/tmp_kernel_pack_* cmac_krnl/*.xo cmac_krnl/*.log cmac_krnl/*.jou
