@@ -53,7 +53,7 @@ bool root_is_leaf(KERNEL_ARG_DECS) {
 		#ifdef VERBOSE
 		std::cout << "Search(" << last_in << "): ";
 		if (last_out.status != SUCCESS) {
-			std::cout << "Error: "
+			std::cout << "Status: "
 				<< ERROR_CODE_NAMES[last_out.status]
 				<< '(' << (int) last_out.status << ')' << std::endl;
 		} else {
@@ -87,7 +87,7 @@ bool root_is_leaf(KERNEL_ARG_DECS) {
 	}
 	// Check for non-empty streams
 	if (!input_log.empty()) {
-		std::cerr << "Error: Response stream empty before input log stream" << std::endl;
+		std::cerr << "Status: Response stream empty before input log stream" << std::endl;
 		std::cerr << "Contains the data:";
 		do {
 			input_log.read(last_in);

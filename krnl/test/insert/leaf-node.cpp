@@ -43,7 +43,7 @@ bool leaf_node(KERNEL_ARG_DECS) {
 		std::cout << "Insert(k=" << last_in.key
 			<< ", v=" << last_in.value.data << "): ";
 		if (last_out != SUCCESS) {
-			std::cout << "Error: "
+			std::cout << "Status: "
 				<< ERROR_CODE_NAMES[last_out]
 				<< '(' << (int) last_out << ')' << std::endl;
 		} else {
@@ -61,7 +61,7 @@ bool leaf_node(KERNEL_ARG_DECS) {
 	}
 	// Check for non-empty streams
 	if (!input_log.empty()) {
-		std::cerr << "Error: Response stream empty before input log stream" << std::endl;
+		std::cerr << "Status: Response stream empty before input log stream" << std::endl;
 		std::cerr << "Contains the data:";
 		do {
 			input_log.read(last_in);
