@@ -18,18 +18,18 @@ void krnl(
 	hls::stream<pkt256>& m_axis_tx_meta,
 	hls::stream<pkt64>&  s_axis_rx_data
 ) {
-	#pragma HLS INTERFACE m_axi port=root        bundle=gmem3 depth=1                  offset=slave
-	#pragma HLS INTERFACE m_axi port=hbm         bundle=gmem0 depth=40                 offset=slave
-	#pragma HLS INTERFACE m_axi port=req_buffer  bundle=gmem1 depth=256                offset=slave
-	#pragma HLS INTERFACE m_axi port=resp_buffer bundle=gmem2 depth=256                offset=slave
-	#pragma HLS INTERFACE s_axilite port=return
-	#pragma HLS INTERFACE s_axilite port=loop_max
-	#pragma HLS INTERFACE s_axilite port=op_max
-	#pragma HLS INTERFACE s_axilite port=reset
-	#pragma HLS INTERFACE s_axilite port=my_node_id
-	#pragma HLS INTERFACE m_axi     port=qpn_table bundle=gmem4 depth=MAX_KRNL_NODES   offset=slave
-	#pragma HLS INTERFACE axis port=m_axis_tx_meta depth=16
-	#pragma HLS INTERFACE axis port=s_axis_rx_data depth=16
+	#pragma HLS INTERFACE m_axi port=root        bundle=gmem3 depth=1   offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=1  max_write_burst_length=1
+	#pragma HLS INTERFACE m_axi port=hbm         bundle=gmem0 depth=40  offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
+	#pragma HLS INTERFACE m_axi port=req_buffer  bundle=gmem1 depth=256 offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
+	#pragma HLS INTERFACE m_axi port=resp_buffer bundle=gmem2 depth=256 offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
+	#pragma HLS INTERFACE s_axilite port=return    bundle=control
+	#pragma HLS INTERFACE s_axilite port=loop_max  bundle=control
+	#pragma HLS INTERFACE s_axilite port=op_max    bundle=control
+	#pragma HLS INTERFACE s_axilite port=reset     bundle=control
+	#pragma HLS INTERFACE s_axilite port=my_node_id bundle=control
+	#pragma HLS INTERFACE m_axi     port=qpn_table bundle=gmem4 depth=16 offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
+	#pragma HLS INTERFACE axis port=m_axis_tx_meta depth=64
+	#pragma HLS INTERFACE axis port=s_axis_rx_data depth=64
 
 	static hls::stream<Request> requests;
 	static hls::stream<Response> responses;
