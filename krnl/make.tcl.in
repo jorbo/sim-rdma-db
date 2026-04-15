@@ -49,7 +49,7 @@ set command [lindex $argv 2]
 
 if {$command == "synthesis"} {
 	csynth_design
-	cosim_design -O -cycle_limit 1000000
+	cosim_design -O -disable_deadlock_detection
 } elseif {$command == "csim"} {
 	csim_design
 } elseif {$command == "ip"} {
