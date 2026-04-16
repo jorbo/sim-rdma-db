@@ -148,7 +148,7 @@ installip: installip-hls installip-rocetest installip-cmac
 # 1) HLS IPs: krnl + fpga-network-stack submodules (arp, toe, udp, rocev2, hash_table, ...)
 installip-hls:
 	mkdir -p build $(IP_REPO)
-	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO)
+	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
 	$(MAKE) -C build installip
 
 # 2) rocetest_krnl RTL kernel — packaged via Vivado Tcl
