@@ -15,6 +15,8 @@
 # makefile-generator v1.0.3
 #
 
+SHELL := /bin/bash
+
 ############################## Help Section ##############################
 .PHONY: help
 
