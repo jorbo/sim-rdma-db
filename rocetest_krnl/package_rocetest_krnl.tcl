@@ -45,29 +45,20 @@
 # PART OF THIS FILE AT ALL TIMES.
 # 
 # *******************************************************************************/
+set suffix   [lindex $argv 0]
+set projPart [lindex $argv 1]
+
 set path_to_hdl "./rocetest_krnl/src"
 set path_to_packaged "./packaged_kernel_${suffix}"
 set path_to_tmp_project "./tmp_kernel_pack_${suffix}"
-set path_to_common "./common"
+set path_to_common "./fpga-network-stack/hdl/common"
 set path_to_pack_tcl "./rocetest_krnl"
-
-# set words [split $device "_"]
-# set board [lindex $words 1]
-
-# if {[string compare -nocase $board "u280"] == 0} {
-# set projPart "xcu280-fsvh2892-2L-e"
-# } else {
-#     puts "Unknown board $board"
-#     exit 
-# }
-
-source $path_to_common/platform.tcl
 
 set projName kernel_pack
 create_project -force $projName $path_to_tmp_project -part $projPart
 
 add_files -norecurse [glob $path_to_hdl/hdl/*.v $path_to_hdl/hdl/*.sv $path_to_hdl/hdl/*.svh ]
-add_files -norecurse [glob $path_to_common/types/*.v $path_to_common/types/*.sv $path_to_common/types/*.svh ]
+add_files -norecurse [glob $path_to_common/davos_types.svh]
 #add_files -norecurse [glob /home/zhenhao/vitis_network/build/fpga-network-stack/hls/toe/toe_prj/solution1/impl/ip/hdl/verilog/*.v]
 
 set_property top network_krnl [current_fileset]
