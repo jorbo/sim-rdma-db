@@ -156,8 +156,10 @@ installip-hls:
 # 2) rocetest_krnl RTL kernel — packaged via Vivado Tcl
 installip-rocetest:
 	mkdir -p $(IP_REPO)
-	cd rocetest_krnl && IPREPOPATH=$(IP_REPO) vivado -mode batch -source package_rocetest_krnl.tcl
-	cp rocetest_krnl/rocetest_krnl.xo $(IP_REPO)/
+	IPREPOPATH=$(IP_REPO) vivado -mode batch \
+		-source rocetest_krnl/package_rocetest_krnl.tcl \
+		-tclargs rocetest_krnl xcu280-fsvh2892-2L-e
+	cp rocetest_krnl.xo $(IP_REPO)/ 2>/dev/null || cp packaged_kernel_rocetest_krnl/*.xo $(IP_REPO)/rocetest_krnl.xo
 
 # 3) cmac_krnl RTL kernel — packaged via Vivado Tcl
 installip-cmac:
