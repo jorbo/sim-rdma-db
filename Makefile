@@ -164,8 +164,10 @@ installip-rocetest:
 # 3) cmac_krnl RTL kernel — packaged via Vivado Tcl
 installip-cmac:
 	mkdir -p $(IP_REPO)
-	cd cmac_krnl && IPREPOPATH=$(IP_REPO) vivado -mode batch -source package_cmac_krnl.tcl
-	cp cmac_krnl/cmac_krnl.xo $(IP_REPO)/
+	IPREPOPATH=$(IP_REPO) vivado -mode batch \
+		-source cmac_krnl/package_cmac_krnl.tcl \
+		-tclargs cmac_krnl xcu280-fsvh2892-2L-e
+	cp cmac_krnl.xo $(IP_REPO)/ 2>/dev/null || cp packaged_kernel_cmac_krnl/*.xo $(IP_REPO)/cmac_krnl.xo
 
 # Trigger installip when iprepo is missing krnl.xo
 $(IP_REPO)/krnl.xo:
