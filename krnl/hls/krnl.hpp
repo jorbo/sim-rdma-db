@@ -31,8 +31,11 @@ void krnl(
 	int           qpn_table[MAX_KRNL_NODES],
 	//! [out]   RDMA metadata stream for outgoing READ/WRITE commands
 	hls::stream<pkt256>& m_axis_tx_meta,
-	//! [in]    RDMA receive stream carrying incoming READ response data
-	hls::stream<pkt64>&  s_axis_rx_data
+	//! [in]    Per-RDMA-op completion token stream from rocetest_krnl
+	hls::stream<pkt32>&  s_axis_completion,
+	//! [in]    HBM-resident response landing pad (shared bank with rocetest m00_axi).
+	//!         First-light: single in-flight read, slot=0.
+	Node        *resp_in
 );
 
 

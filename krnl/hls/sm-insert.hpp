@@ -23,7 +23,8 @@ void sm_insert(
 	hls::stream<insert_tagged_in_t>&  input,
 	hls::stream<insert_tagged_out_t>& output,
 	hls::stream<pkt256>&              m_axis_tx_meta,
-	hls::stream<pkt64>&               s_axis_rx_data
+	hls::stream<pkt32>&               s_axis_completion,
+	Node                             *resp_in
 );
 #endif
 

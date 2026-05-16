@@ -106,15 +106,10 @@ set_property interface_mode slave [ipx::get_bus_interfaces s_axis_role_tx_meta -
 set_property abstraction_type_vlnv xilinx.com:interface:axis_rtl:1.0 [ipx::get_bus_interfaces s_axis_role_tx_meta -of_objects [ipx::current_core]]
 ipx::associate_bus_interfaces -busif s_axis_role_tx_meta -clock ap_clk [ipx::current_core]
 
-ipx::add_bus_interface s_axis_role_tx_data [ipx::current_core]
-set_property interface_mode slave [ipx::get_bus_interfaces s_axis_role_tx_data -of_objects [ipx::current_core]]
-set_property abstraction_type_vlnv xilinx.com:interface:axis_rtl:1.0 [ipx::get_bus_interfaces s_axis_role_tx_data -of_objects [ipx::current_core]]
-ipx::associate_bus_interfaces -busif s_axis_role_tx_data -clock ap_clk [ipx::current_core]
-
-ipx::add_bus_interface m_axis_role_tx_status [ipx::current_core]
-set_property interface_mode master [ipx::get_bus_interfaces m_axis_role_tx_status -of_objects [ipx::current_core]]
-set_property abstraction_type_vlnv xilinx.com:interface:axis_rtl:1.0 [ipx::get_bus_interfaces m_axis_role_tx_status -of_objects [ipx::current_core]]
-ipx::associate_bus_interfaces -busif m_axis_role_tx_status -clock ap_clk [ipx::current_core]
+ipx::add_bus_interface m_axis_op_completion [ipx::current_core]
+set_property interface_mode master [ipx::get_bus_interfaces m_axis_op_completion -of_objects [ipx::current_core]]
+set_property abstraction_type_vlnv xilinx.com:interface:axis_rtl:1.0 [ipx::get_bus_interfaces m_axis_op_completion -of_objects [ipx::current_core]]
+ipx::associate_bus_interfaces -busif m_axis_op_completion -clock ap_clk [ipx::current_core]
 
 # cmac interfaces
 ipx::add_bus_interface m_axis_net_tx [ipx::current_core]

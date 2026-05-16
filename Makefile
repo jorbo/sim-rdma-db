@@ -153,6 +153,21 @@ installip-hls:
 	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
 	$(MAKE) -C build installip
 
+############################## HLS cosim — run RTL co-sim against the krnl HLS testbench ##############################
+# Requires a prior `make installip-hls` (or any csynth) so the RTL is present
+# in the krnl HLS project. Fails fast if the TB writes "Error:" to stdout, so
+# tests should print "Status: ..." messages instead.
+.PHONY: cosim cosim-krnl csim-krnl
+cosim cosim-krnl:
+	mkdir -p build
+	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
+	$(MAKE) -C build cosim.krnl
+
+csim-krnl:
+	mkdir -p build
+	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
+	$(MAKE) -C build csim.krnl
+
 # 2) rocetest_krnl RTL kernel — packaged via Vivado Tcl
 installip-rocetest:
 	mkdir -p $(IP_REPO)

@@ -11,11 +11,13 @@ void sm_insert(
 	hls::stream<insert_tagged_in_t>&  input,
 	hls::stream<insert_tagged_out_t>& output,
 	hls::stream<pkt256>&              m_axis_tx_meta,
-	hls::stream<pkt64>&               s_axis_rx_data
+	hls::stream<pkt32>&               s_axis_completion,
+	Node                             *resp_in
 ) {
 	(void)qpn_table;
 	(void)m_axis_tx_meta;
-	(void)s_axis_rx_data;
+	(void)s_axis_completion;
+	(void)resp_in;
 
 	insert_loop: for (;;) {
 		#pragma HLS loop_tripcount max=NUM_REQUESTS

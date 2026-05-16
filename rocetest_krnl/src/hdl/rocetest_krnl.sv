@@ -14,8 +14,7 @@ module rocetest_krnl #(
   parameter integer C_S_AXIS_NET_RX_TDATA_WIDTH         = 512,
   parameter integer C_M_AXIS_NET_TX_TDATA_WIDTH         = 512,
   parameter integer C_S_AXIS_ROLE_TX_META_TDATA_WIDTH   = 256,
-  parameter integer C_S_AXIS_ROLE_TX_DATA_TDATA_WIDTH   = 512,
-  parameter integer C_M_AXIS_ROLE_TX_STATUS_TDATA_WIDTH = 512
+  parameter integer C_M_AXIS_OP_COMPLETION_TDATA_WIDTH  = 32
 )
 (
   // System Signals
@@ -85,18 +84,12 @@ module rocetest_krnl #(
   input  wire [C_S_AXIS_ROLE_TX_META_TDATA_WIDTH-1:0]     s_axis_role_tx_meta_tdata   ,
   input  wire [C_S_AXIS_ROLE_TX_META_TDATA_WIDTH/8-1:0]   s_axis_role_tx_meta_tkeep   ,
   input  wire                                             s_axis_role_tx_meta_tlast   ,
-  // AXI4-Stream (slave) interface s_axis_role_tx_data
-  input  wire                                             s_axis_role_tx_data_tvalid  ,
-  output wire                                             s_axis_role_tx_data_tready  ,
-  input  wire [C_S_AXIS_ROLE_TX_DATA_TDATA_WIDTH-1:0]     s_axis_role_tx_data_tdata   ,
-  input  wire [C_S_AXIS_ROLE_TX_DATA_TDATA_WIDTH/8-1:0]   s_axis_role_tx_data_tkeep   ,
-  input  wire                                             s_axis_role_tx_data_tlast   ,
-  // AXI4-Stream (master) interface m_axis_role_tx_status
-  output wire                                             m_axis_role_tx_status_tvalid,
-  input  wire                                             m_axis_role_tx_status_tready,
-  output wire [C_M_AXIS_ROLE_TX_STATUS_TDATA_WIDTH-1:0]   m_axis_role_tx_status_tdata ,
-  output wire [C_M_AXIS_ROLE_TX_STATUS_TDATA_WIDTH/8-1:0] m_axis_role_tx_status_tkeep ,
-  output wire                                             m_axis_role_tx_status_tlast ,
+  // AXI4-Stream (master) interface m_axis_op_completion
+  output wire                                             m_axis_op_completion_tvalid ,
+  input  wire                                             m_axis_op_completion_tready ,
+  output wire [C_M_AXIS_OP_COMPLETION_TDATA_WIDTH-1:0]    m_axis_op_completion_tdata  ,
+  output wire [C_M_AXIS_OP_COMPLETION_TDATA_WIDTH/8-1:0]  m_axis_op_completion_tkeep  ,
+  output wire                                             m_axis_op_completion_tlast  ,
 
   // // AXI4-Stream (slave) interface s_axis_qp_interface
   // input  wire                                             s_axis_qp_interface_tvalid  ,
@@ -176,7 +169,7 @@ axi_stream      m_axis_roce_write_data();
 axis_mem_status axis_roce_read_status();
 axis_mem_status axis_roce_write_status();
 assign axis_roce_read_status.ready = 1'b1;
-assign axis_roce_write_status.ready = 1'b1;
+// axis_roce_write_status is routed out via m_axis_op_completion (per-op completion)
 
 
 // Register and invert reset signal.
@@ -382,21 +375,25 @@ assign axis_roce_write_cmd.length = m_axis_roce_write_cmd.data[95:64];
 assign m_axis_roce_write_cmd.ready = axis_roce_write_cmd.ready;
 
 // RoCE application streaming signals here
-assign s_axis_roce_role_tx_data.valid = s_axis_role_tx_data_tvalid;
-assign s_axis_roce_role_tx_data.data = s_axis_role_tx_data_tdata;
-assign s_axis_roce_role_tx_data.keep = s_axis_role_tx_data_tkeep;
-assign s_axis_roce_role_tx_data.last = s_axis_role_tx_data_tlast;
-assign s_axis_role_tx_data_tready = s_axis_roce_role_tx_data.ready;
+// Write payload path deferred (see rdma_completion_architecture). Tie off internally.
+assign s_axis_roce_role_tx_data.valid = 1'b0;
+assign s_axis_roce_role_tx_data.data  = '0;
+assign s_axis_roce_role_tx_data.keep  = '0;
+assign s_axis_roce_role_tx_data.last  = 1'b0;
 
 assign s_axis_roce_role_tx_meta.valid = s_axis_role_tx_meta_tvalid;
 assign s_axis_roce_role_tx_meta.data = s_axis_role_tx_meta_tdata[159:0];
 assign s_axis_role_tx_meta_tready = s_axis_roce_role_tx_meta.ready;
 
-assign m_axis_role_tx_status_tvalid = m_axis_roce_role_tx_status.valid;
-assign m_axis_role_tx_status_tdata = m_axis_roce_role_tx_status.data;
-assign m_axis_role_tx_status_tkeep = m_axis_roce_role_tx_status.keep;
-assign m_axis_role_tx_status_tlast = m_axis_roce_role_tx_status.last;
-assign m_axis_roce_role_tx_status.ready = m_axis_role_tx_status_tready;
+// m_axis_roce_role_tx_status is the one-shot QP-up signal from stack_top — drop it.
+assign m_axis_roce_role_tx_status.ready = 1'b1;
+
+// Per-op completion: tap axis_roce_write_status (8b status from DataMover, zero-extended to 32b)
+assign m_axis_op_completion_tvalid = axis_roce_write_status.valid;
+assign m_axis_op_completion_tdata  = { {(C_M_AXIS_OP_COMPLETION_TDATA_WIDTH-8){1'b0}}, axis_roce_write_status.data };
+assign m_axis_op_completion_tkeep  = {(C_M_AXIS_OP_COMPLETION_TDATA_WIDTH/8){1'b1}};
+assign m_axis_op_completion_tlast  = 1'b1;
+assign axis_roce_write_status.ready = m_axis_op_completion_tready;
 
 // assign s_axis_qp_interface.valid = s_axis_qp_interface_tvalid;
 // assign s_axis_qp_interface.data = s_axis_qp_interface_tdata[159:0];

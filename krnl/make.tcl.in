@@ -53,13 +53,20 @@ if {$command == "synthesis"} {
 	cosim_design -O -disable_deadlock_detection
 } elseif {$command == "csim"} {
 	csim_design
+} elseif {$command == "cosim"} {
+	# Standalone RTL co-sim. Assumes a prior csynth_design has produced the
+	# RTL — re-run "synthesis" first if you've edited HLS sources since.
+	# WARNING: cosim greps testbench stdout for "Error:" — anything starting
+	# with that literal string makes cosim fail even on a passing test.
+	# Print status strings as "Status: ..." not "Error: ..." in the TB.
+	cosim_design -O -disable_deadlock_detection
 } elseif {$command == "ip"} {
 	export_design -format xo
 } elseif {$command == "installip"} {
 	file mkdir ${IPREPO_DIR}
 	file copy -force ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}_prj/solution1/impl/export.xo ${IPREPO_DIR}/${PROJECT_NAME}.xo
 } else {
-	puts "No valid command specified. Use vivado_hls -f make.tcl <synthesis|csim|ip|installip> ."
+	puts "No valid command specified. Use vivado_hls -f make.tcl <synthesis|csim|cosim|ip|installip> ."
 }
 
 

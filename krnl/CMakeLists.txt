@@ -50,7 +50,7 @@ set(EXAMPLE_HLS_DEPENDS
 
 
 #Setup HLS custom targets
-set(HLS_TARGETS synthesis csim ip installip)
+set(HLS_TARGETS synthesis csim cosim ip installip)
 
 foreach (target ${HLS_TARGETS})
 	if (NOT TARGET ${target})

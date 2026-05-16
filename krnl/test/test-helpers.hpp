@@ -34,10 +34,33 @@ extern "C" {
 	node_id_t my_node_id = 0; \
 	int qpn_table[MAX_KRNL_NODES] = {}; \
 	hls::stream<pkt256> m_axis_tx_meta; \
-	hls::stream<pkt64>  s_axis_rx_data;
+	hls::stream<pkt32>  s_axis_completion; \
+	Node resp_in_slot = {}; \
+	Node *resp_in = &resp_in_slot;
 #define KERNEL_ARG_VARS \
 	root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset, \
-	my_node_id, qpn_table, m_axis_tx_meta, s_axis_rx_data
+	my_node_id, qpn_table, m_axis_tx_meta, s_axis_completion, resp_in
+
+//! Simulate exactly one in-flight remote RDMA-read response.
+//!
+//! Call BEFORE invoking krnl(...). Stores `fake_node` in resp_in_slot and
+//! pre-pushes one completion token into s_axis_completion so the kernel's
+//! fetch_node will (a) emit its RDMA-read meta into m_axis_tx_meta,
+//! (b) read the pre-staged completion token, then (c) read the pre-staged Node
+//! from resp_in[0].
+//!
+//! Requires that `DECLARE_RDMA_ARGS` has already been expanded in scope.
+//! First-light limitation: at most one outstanding remote fetch per kernel run.
+//! Multiple remote fetches in one run will all read the same resp_in_slot.
+#define SIMULATE_REMOTE_FETCH(fake_node) \
+	do { \
+		resp_in_slot = (fake_node); \
+		pkt32 _completion_tok; \
+		_completion_tok.data = 0; \
+		_completion_tok.keep = 0xF; \
+		_completion_tok.last = 1; \
+		s_axis_completion.write(_completion_tok); \
+	} while (0)
 
 
 //!@brief Print a hex dump of a section of HBM grouped by object
