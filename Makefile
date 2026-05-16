@@ -144,8 +144,8 @@ build: check-vitis check-device $(IP_REPO)/krnl.xo $(BINARY_CONTAINERS)
 xclbin: build
 
 ############################## installip — package all .xo into $(IP_REPO) ##############################
-.PHONY: installip installip-hls installip-rocetest installip-cmac installip-bridge
-installip: installip-hls installip-rocetest installip-cmac installip-bridge
+.PHONY: installip installip-hls installip-rocetest installip-cmac
+installip: installip-hls installip-rocetest installip-cmac
 
 # 1) HLS IPs: krnl + fpga-network-stack submodules (arp, toe, udp, rocev2, hash_table, ...)
 installip-hls:
@@ -169,13 +169,6 @@ installip-cmac:
 		-tclargs cmac_krnl xcu280-fsvh2892-2L-e
 	cp cmac_krnl.xo $(IP_REPO)/ 2>/dev/null || cp packaged_kernel_cmac_krnl/*.xo $(IP_REPO)/cmac_krnl.xo
 
-# 4) bridge_krnl HLS adapter — compiled directly to .xo via Vitis v++
-installip-bridge: check-vitis check-device
-	mkdir -p $(IP_REPO) $(TEMP_DIR)
-	$(VPP) -c -k bridge_krnl -t $(TARGET) --platform $(PLATFORM) \
-		--temp_dir $(TEMP_DIR)/bridge_krnl --save-temps \
-		-o $(IP_REPO)/bridge_krnl.xo bridge_krnl/hls/bridge_krnl.cpp
-
 # Trigger installip when iprepo is missing krnl.xo
 $(IP_REPO)/krnl.xo:
 	$(MAKE) installip
@@ -185,8 +178,7 @@ $(IP_REPO)/krnl.xo:
 BINARY_CONTAINER_krnl_OBJS := \
 	$(IP_REPO)/krnl.xo \
 	$(IP_REPO)/rocetest_krnl.xo \
-	$(IP_REPO)/cmac_krnl.xo \
-	$(IP_REPO)/bridge_krnl.xo
+	$(IP_REPO)/cmac_krnl.xo
 
 $(BUILD_DIR)/krnl.xclbin: $(BINARY_CONTAINER_krnl_OBJS)
 	mkdir -p $(BUILD_DIR)
