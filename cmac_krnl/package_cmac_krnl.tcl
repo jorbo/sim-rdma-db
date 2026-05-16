@@ -230,3 +230,8 @@ set_property auto_family_support_level level_2 [ipx::current_core]
 ipx::update_checksums [ipx::current_core]
 ipx::save_core [ipx::current_core]
 close_project -delete
+
+# Emit the .xo for Vitis linker consumption
+set xo_path "./cmac_krnl.xo"
+if {[file exists $xo_path]} { file delete -force $xo_path }
+package_xo -xo_path $xo_path -kernel_name cmac_krnl -ip_directory $path_to_packaged -kernel_xml ./cmac_krnl/cmac_krnl.xml

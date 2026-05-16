@@ -134,3 +134,8 @@ set_property auto_family_support_level level_2 [ipx::current_core]
 ipx::update_checksums [ipx::current_core]
 ipx::save_core [ipx::current_core]
 close_project -delete
+
+# Emit the .xo for Vitis linker consumption
+set xo_path "./rocetest_krnl.xo"
+if {[file exists $xo_path]} { file delete -force $xo_path }
+package_xo -xo_path $xo_path -kernel_name rocetest_krnl -ip_directory $path_to_packaged -kernel_xml $path_to_pack_tcl/rocetest_krnl.xml
