@@ -1,5 +1,4 @@
-`include "network_types.svh"
-`include "network_intf.svh"
+`include "davos_types.svh"
 
 module network_clk_cross (
     input  wire             net_clk,

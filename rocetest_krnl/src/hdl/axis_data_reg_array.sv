@@ -1,5 +1,4 @@
-`include "network_types.svh"
-`include "network_intf.svh"
+`include "davos_types.svh"
 
 module axis_data_reg_array #(
     parameter integer                       N_STAGES = 2
