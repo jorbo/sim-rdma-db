@@ -92,6 +92,15 @@ static void run_kernel(
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
 		sizeof(qpn_table), qpn_table, &err
 	));
+	// resp_in: HBM-resident RDMA-read landing pad (single slot). On hardware
+	// it shares HBM[0] with rocetest m00_axi; the host never touches the
+	// contents, but XRT requires every pointer argument to be bound.
+	std::vector<Node, aligned_allocator<Node> > resp_in(1);
+	OCL_CHECK(err, cl::Buffer buffer_resp_in(
+		context,
+		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
+		sizeof(Node)*resp_in.size(), resp_in.data(), &err
+	));
 
 	// KERNEL ARGS (must match krnl() parameter order)
 	int loop_max = 6 * (int)requests.size();
@@ -105,6 +114,9 @@ static void run_kernel(
 	OCL_CHECK(err, err = krnl1.setArg(6, true));
 	OCL_CHECK(err, err = krnl1.setArg(7, (uint8_t)rdma.my_node_id));
 	OCL_CHECK(err, err = krnl1.setArg(8, buffer_qpn_table));
+	// Args 9/10 are the AXIS streams (m_axis_tx_meta, s_axis_completion):
+	// stream-connected in the xclbin, never set from the host.
+	OCL_CHECK(err, err = krnl1.setArg(11, buffer_resp_in));
 
 	// HOST -> DEVICE
 	std::cout << "HOST -> DEVICE" << std::endl;
