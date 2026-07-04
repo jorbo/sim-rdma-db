@@ -10,4 +10,6 @@ endif
 VIVADO_INCLUDE:= $(XILINX_VIVADO)/include
 opencl_CXXFLAGS=-I$(OPENCL_INCLUDE) -I$(VIVADO_INCLUDE)
 OPENCL_LIB:= $(xrt_path)/lib
-opencl_LDFLAGS=-L$(OPENCL_LIB) -lOpenCL -pthread
+# libxilinxopencl provides the xcl* extension entry points (e.g.
+# xclGetMemObjDeviceAddress), which the ICD libOpenCL does not export.
+opencl_LDFLAGS=-L$(OPENCL_LIB) -lOpenCL -lxilinxopencl -pthread
