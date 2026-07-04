@@ -51,7 +51,7 @@ int verify(
 	}
 	printf("Done!\n");
 	printf("Verifying memory contents...\n");
-	check_inserted_leaves(memory.data());
+	match = check_inserted_leaves(memory.data()) && match;
 	printf("Done!\n");
 
 	dump_node_list(stdout, memory.data());

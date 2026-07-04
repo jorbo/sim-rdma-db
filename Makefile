@@ -191,9 +191,19 @@ installip-cmac:
 		-tclargs cmac_krnl xcu280-fsvh2892-2L-e
 	cp cmac_krnl.xo $(IP_REPO)/ 2>/dev/null || cp packaged_kernel_cmac_krnl/*.xo $(IP_REPO)/cmac_krnl.xo
 
-# Trigger installip when iprepo is missing krnl.xo
-$(IP_REPO)/krnl.xo:
-	$(MAKE) installip
+# Rebuild each .xo when its sources change, not only when it is missing.
+# Without source deps a stale .xo in iprepo gets linked silently.
+$(IP_REPO)/krnl.xo: $(wildcard krnl/hls/*.cpp) $(wildcard krnl/hls/*.hpp) \
+		$(wildcard krnl/core/*.c) $(wildcard krnl/core/*.h)
+	$(MAKE) installip-hls
+
+$(IP_REPO)/rocetest_krnl.xo: $(wildcard rocetest_krnl/src/hdl/*) \
+		rocetest_krnl/package_rocetest_krnl.tcl rocetest_krnl/rocetest_krnl.xml
+	$(MAKE) installip-rocetest
+
+$(IP_REPO)/cmac_krnl.xo: $(wildcard cmac_krnl/src/hdl/*) \
+		cmac_krnl/package_cmac_krnl.tcl cmac_krnl/cmac_krnl.xml
+	$(MAKE) installip-cmac
 
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 # All .xo's come from $(IP_REPO), staged by `make installip`.
