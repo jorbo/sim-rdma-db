@@ -28,21 +28,13 @@ std::vector<NodeConfig> parse_node_config(const std::string& path) {
         if (line.empty() || line[0] == '#') continue;
         std::istringstream ss(line);
         int id;
-        std::string ip;
-        if (!(ss >> id >> ip))
+        std::string host_ip, fpga_ip;
+        if (!(ss >> id >> host_ip))
             throw std::runtime_error("Bad config line: " + line);
-        nodes.push_back({(node_id_t)id, ip});
+        ss >> fpga_ip; // optional third column
+        nodes.push_back({(node_id_t)id, host_ip, fpga_ip});
     }
     return nodes;
-}
-
-
-int get_local_qpn() {
-    // TODO: query the QPN assigned to this FPGA by the Coyote networking stack.
-    // Example (Coyote HAL):
-    //   coyote_dev dev(0);
-    //   return dev.getQpn();
-    return 0;
 }
 
 
@@ -116,7 +108,7 @@ RdmaConfig bootstrap_rdma(
         int s = ::socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in peer{};
         peer.sin_family = AF_INET;
-        ::inet_pton(AF_INET, nc.ip.c_str(), &peer.sin_addr);
+        ::inet_pton(AF_INET, nc.host_ip.c_str(), &peer.sin_addr);
         peer.sin_port = htons(BOOTSTRAP_PORT);
         // Retry until the remote server socket is ready.
         while (::connect(s, reinterpret_cast<sockaddr*>(&peer), sizeof(peer)) != 0) {

@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
 
 	// Bootstrap: exchange QPNs with all peers.
 	auto nodes      = parse_node_config(config_path);
-	int  local_qpn  = get_local_qpn();
+	int  local_qpn  = qpn_for(my_id);
 	RdmaConfig rdma = bootstrap_rdma(my_id, nodes, local_qpn);
 
 	std::cout << "Bootstrap complete. Node " << (int)my_id
