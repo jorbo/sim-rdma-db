@@ -8,7 +8,10 @@ else
 endif
 
 VIVADO_INCLUDE:= $(XILINX_VIVADO)/include
-opencl_CXXFLAGS=-I$(OPENCL_INCLUDE) -I$(VIVADO_INCLUDE)
+# hls_stream.h / ap_int.h ship with Vitis HLS since the 2020.2 toolchain
+# split; host code that includes kernel headers needs them too.
+HLS_INCLUDE:= $(XILINX_HLS)/include
+opencl_CXXFLAGS=-I$(OPENCL_INCLUDE) -I$(VIVADO_INCLUDE) -I$(HLS_INCLUDE)
 OPENCL_LIB:= $(xrt_path)/lib
 # libxilinxopencl provides the xcl* extension entry points (e.g.
 # xclGetMemObjDeviceAddress), which the ICD libOpenCL does not export.
