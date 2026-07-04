@@ -85,8 +85,11 @@ TreeDevice tree_device_setup(std::string const& binaryFile, TreeInput& input) {
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
 		sizeof(Node)*input.memory.size(), input.memory.data(), &err
 	));
-	// XRT allocates device residence lazily; migrate once so the buffer has
-	// a device address to query (otherwise CL_INVALID_MEM_OBJECT, -38).
+	// A buffer gets its memory-bank index from the kernel argument it is
+	// bound to, and device residence is allocated lazily on first use.
+	// Bind and migrate here so the buffer has a queryable device address
+	// before the bootstrap; run_kernel re-binds the same arg later.
+	OCL_CHECK(err, err = dev.krnl.setArg(1, dev.buffer_memory));
 	OCL_CHECK(err, err = dev.q.enqueueMigrateMemObjects({dev.buffer_memory}, 0));
 	dev.q.finish();
 	dev.memory_vaddr = device_address(dev.buffer_memory, dev.device);
