@@ -65,6 +65,13 @@ ifeq ($(filter $(SERVER),0 1),)
 $(error SERVER must be 0 (table node) or 1 (head node), got '$(SERVER)')
 endif
 CONFIG_FILE := config.server$(SERVER).cfg
+# Emulation defaults to the stub config (no rocetest/cmac — their sim models
+# crash xsim at init). Set FULL_EMU=1 to emulate the full network stack.
+ifneq ($(TARGET), hw)
+ifneq ($(FULL_EMU), 1)
+CONFIG_FILE := config.hwemu.cfg
+endif
+endif
 
 include ./utils.mk
 
@@ -190,10 +197,22 @@ $(IP_REPO)/krnl.xo:
 
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 # All .xo's come from $(IP_REPO), staged by `make installip`.
+# Emulation stub builds swap rocetest/cmac for roce_stub (compiled directly
+# by v++ — no installip step needed for it).
+ifeq ($(CONFIG_FILE), config.hwemu.cfg)
+BINARY_CONTAINER_krnl_OBJS := \
+	$(IP_REPO)/krnl.xo \
+	$(TEMP_DIR)/roce_stub.xo
+else
 BINARY_CONTAINER_krnl_OBJS := \
 	$(IP_REPO)/krnl.xo \
 	$(IP_REPO)/rocetest_krnl.xo \
 	$(IP_REPO)/cmac_krnl.xo
+endif
+
+$(TEMP_DIR)/roce_stub.xo: krnl/hls/roce-stub.cpp krnl/hls/rdma.hpp
+	mkdir -p $(TEMP_DIR)
+	$(VPP) $(VPP_FLAGS) -c -k roce_stub --temp_dir $(TEMP_DIR) -o'$@' $<
 
 $(BUILD_DIR)/krnl.xclbin: $(BINARY_CONTAINER_krnl_OBJS)
 	mkdir -p $(BUILD_DIR)
