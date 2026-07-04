@@ -31,6 +31,9 @@ struct RdmaConfig {
     //! Device address of each node's RDMA-exposed tree memory; RDMA reads
     //! target vaddr_table[nid] + local_addr * sizeof(Node)
     uint64_t  vaddr_table[MAX_KRNL_NODES];
+    //! Root pointer of each node's tree (post-split, node-id encoded).
+    //! Head nodes traverse root_table[table_node]; 0 = no tree advertised.
+    bptr_t    root_table[MAX_KRNL_NODES];
 };
 
 //! Parse a whitespace-separated config file: one
@@ -52,9 +55,12 @@ static inline int qpn_for(node_id_t id) { return QPN_BASE + id; }
 //! @param local_qpn   This node's QPN (from qpn_for()).
 //! @param local_vaddr Device address of this node's RDMA-exposed tree
 //!                    memory (TreeDevice::memory_vaddr).
+//! @param local_root  Root pointer of this node's finished tree; 0 if this
+//!                    node does not serve one (head nodes).
 RdmaConfig bootstrap_rdma(
     node_id_t                   my_id,
     const std::vector<NodeConfig>& nodes,
     int                         local_qpn,
-    uint64_t                    local_vaddr
+    uint64_t                    local_vaddr,
+    bptr_t                      local_root
 );

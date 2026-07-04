@@ -14,7 +14,7 @@ void setup_data(
 	Request tmp_req = {.opcode = INSERT};
 	Response tmp_resp = {.opcode = INSERT, .insert = SUCCESS};
 
-	for (int i = 1; i <= 22; i++) {
+	for (int i = 1; i <= TEST_N_KEYS; i++) {
 		tmp_req.insert.key = i;
 		tmp_req.insert.value.data = -i;
 		requests.push_back(tmp_req);
@@ -29,10 +29,28 @@ void setup_data(
 }
 
 
+void setup_search_data(
+	std::vector<Request, aligned_allocator<Request> >& requests,
+	std::vector<Response, aligned_allocator<Response> >& responses_expected
+) {
+	Request tmp_req = {.opcode = SEARCH};
+	Response tmp_resp = {.opcode = SEARCH};
+	tmp_resp.search.status = SUCCESS;
+
+	for (int i = 1; i <= TEST_N_KEYS; i++) {
+		tmp_req.search = i;
+		tmp_resp.search.value.data = -i;
+		requests.push_back(tmp_req);
+		responses_expected.push_back(tmp_resp);
+	}
+}
+
+
 int verify(
 	std::vector<Response, aligned_allocator<Response> >& responses,
 	std::vector<Response, aligned_allocator<Response> >& responses_expected,
-	std::vector<Node, aligned_allocator<Node> >& memory
+	std::vector<Node, aligned_allocator<Node> >& memory,
+	bool check_memory
 ) {
 	bool match = true;
 
@@ -50,11 +68,13 @@ int verify(
 		}
 	}
 	printf("Done!\n");
-	printf("Verifying memory contents...\n");
-	match = check_inserted_leaves(memory.data()) && match;
-	printf("Done!\n");
+	if (check_memory) {
+		printf("Verifying memory contents...\n");
+		match = check_inserted_leaves(memory.data()) && match;
+		printf("Done!\n");
 
-	dump_node_list(stdout, memory.data());
+		dump_node_list(stdout, memory.data());
+	}
 
 	std::cout << "TEST " << (match ? "PASSED" : "FAILED") << std::endl;
 	return (match ? EXIT_SUCCESS : EXIT_FAILURE);
