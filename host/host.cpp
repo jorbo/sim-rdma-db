@@ -59,10 +59,10 @@ static void setup_ocl(
 static uint64_t device_address(cl::Buffer& buf, cl::Device& device) {
 #ifdef HAVE_XILINX_EXT
 	uint64_t addr = 0;
-	cl_int err = xclGetMemObjectDeviceAddress(
+	cl_int err = xclGetMemObjDeviceAddress(
 		buf(), device(), sizeof(addr), &addr);
 	if (err != CL_SUCCESS) {
-		printf("WARNING: xclGetMemObjectDeviceAddress failed (%d); "
+		printf("WARNING: xclGetMemObjDeviceAddress failed (%d); "
 			"advertising vAddr=0\n", err);
 		return 0;
 	}
