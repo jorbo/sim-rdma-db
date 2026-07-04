@@ -85,7 +85,7 @@ IP_REPO := $(abspath build/iprepo)
 export IPREPO_DIR := $(IP_REPO)
 # SoC variables
 RUN_APP_SCRIPT = ./run_app.sh
-PACKAGE_OUT = ./package.$(TARGET)
+PACKAGE_OUT = ./package.$(TARGET).server$(SERVER)
 
 LAUNCH_EMULATOR = $(PACKAGE_OUT)/launch_$(TARGET).sh
 RESULT_STRING = TEST PASSED
