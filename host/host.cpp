@@ -15,6 +15,7 @@ static void setup_ocl(
 	std::string const& binaryFile,
 	cl::Context& context,
 	cl::Device& device_out,
+	cl::Program& program_out,
 	cl::Kernel& krnl1,
 	cl::CommandQueue& q
 ) {
@@ -43,6 +44,7 @@ static void setup_ocl(
 			std::cout << "Setting CU(s) up..." << std::endl;
 			OCL_CHECK(err, krnl1 = cl::Kernel(program, "krnl", &err));
 			device_out = device;
+			program_out = program;
 			valid_device = true;
 			break;
 		}
@@ -79,7 +81,8 @@ TreeDevice tree_device_setup(std::string const& binaryFile, TreeInput& input) {
 	TreeDevice dev;
 	cl_int err;
 
-	setup_ocl(binaryFile, dev.context, dev.device, dev.krnl, dev.q);
+	setup_ocl(binaryFile, dev.context, dev.device, dev.program, dev.krnl,
+	          dev.q);
 	OCL_CHECK(err, dev.buffer_memory = cl::Buffer(
 		dev.context,
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,

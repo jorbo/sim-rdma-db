@@ -13,6 +13,7 @@
 struct TreeDevice {
 	cl::Context context;
 	cl::Device device;
+	cl::Program program; //!< kept so further kernels (rocetest) can be probed
 	cl::Kernel krnl;
 	cl::CommandQueue q;
 	//! Tree-node memory (HBM-resident, exposed to peers via RDMA reads)

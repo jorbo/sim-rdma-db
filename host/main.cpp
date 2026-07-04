@@ -1,5 +1,6 @@
 #include "host.hpp"
 #include "bootstrap.hpp"
+#include "roce-setup.hpp"
 #include "test.hpp"
 #include "run-tree.hpp"
 #include <iostream>
@@ -61,7 +62,7 @@ int main(int argc, char** argv) {
 		RdmaConfig rdma = bootstrap_rdma(my_id, nodes, qpn_for(my_id),
 		                                 dev.memory_vaddr, output.root);
 		print_rdma(rdma, nodes.size());
-		// TODO(P4): program rocetest_krnl's QP context here.
+		configure_roce(dev, rdma, nodes, my_id, dev.buffer_memory);
 		std::cout << "Table node serving; Ctrl-C to exit." << std::endl;
 		for (;;) pause();
 	} else {
@@ -72,7 +73,17 @@ int main(int argc, char** argv) {
 		RdmaConfig rdma = bootstrap_rdma(my_id, nodes, qpn_for(my_id),
 		                                 dev.memory_vaddr, /*local_root=*/0);
 		print_rdma(rdma, nodes.size());
-		// TODO(P4): program rocetest_krnl's QP context here.
+		bool roce = configure_roce(dev, rdma, nodes, my_id,
+		                           dev.buffer_memory);
+
+		// Bring-up step 3: host-driven RDMA READ of the table node's
+		// first node into local offset 0, no B-tree kernel involved.
+		// Run with RDMA_SELFTEST=1 and inspect the landing bytes.
+		if (roce && getenv("RDMA_SELFTEST") != nullptr) {
+			std::cout << "RDMA selftest: reading " << sizeof(Node)
+			          << " bytes from table node..." << std::endl;
+			roce_manual_read(dev, /*raddr=*/0, /*laddr=*/0, sizeof(Node));
+		}
 
 		// The 22-key workload always splits the root off leaf 0, so a
 		// zero root means the table node advertised nothing.
