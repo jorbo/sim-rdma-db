@@ -19,21 +19,27 @@ int main(int argc, char** argv) {
 	node_id_t         my_id       = (node_id_t)std::atoi(argv[2]);
 	const std::string config_path = argv[3];
 
-	// Bootstrap: exchange QPNs with all peers.
-	auto nodes      = parse_node_config(config_path);
-	int  local_qpn  = qpn_for(my_id);
-	RdmaConfig rdma = bootstrap_rdma(my_id, nodes, local_qpn);
-
-	std::cout << "Bootstrap complete. Node " << (int)my_id
-	          << " QPN table:";
-	for (int i = 0; i < (int)nodes.size(); ++i)
-		std::cout << " [" << i << "]=" << rdma.qpn_table[i];
-	std::cout << std::endl;
-
 	TreeInput input;
 	std::vector<Response, aligned_allocator<Response> > responses_expected;
 	setup_data(input.requests, responses_expected, input.memory);
-	TreeOutput output = run_fpga_tree(input, rdma, xclbin);
+
+	// Device setup precedes the bootstrap: peers exchange the device
+	// address of the RDMA-exposed tree memory, which only exists once the
+	// buffer is allocated.
+	TreeDevice dev = tree_device_setup(xclbin, input);
+
+	auto nodes      = parse_node_config(config_path);
+	RdmaConfig rdma = bootstrap_rdma(my_id, nodes, qpn_for(my_id),
+	                                 dev.memory_vaddr);
+
+	std::cout << "Bootstrap complete. Node " << (int)my_id << ":";
+	for (int i = 0; i < (int)nodes.size(); ++i)
+		std::cout << " [" << i << "] qpn=0x" << std::hex
+		          << rdma.qpn_table[i] << " vaddr=0x"
+		          << rdma.vaddr_table[i] << std::dec;
+	std::cout << std::endl;
+
+	TreeOutput output = run_fpga_tree(dev, input, rdma);
 
 	return verify(output.responses, responses_expected, output.memory);
 }

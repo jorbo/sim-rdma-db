@@ -10,11 +10,14 @@
 #include <cerrno>
 
 
-// Wire format for a single QPN exchange message (5 bytes, no padding).
+// Wire format for a single bootstrap exchange message (13 bytes, no
+// padding): the sender's id, its QPN, and the device address of its
+// RDMA-exposed tree memory.
 #pragma pack(push, 1)
 struct QpnMsg {
-    uint8_t node_id;
-    int32_t qpn;
+    uint8_t  node_id;
+    int32_t  qpn;
+    uint64_t vaddr;
 };
 #pragma pack(pop)
 
@@ -58,28 +61,32 @@ static void recv_exact(int fd, void* buf, size_t len) {
 }
 
 
-// Send this node's QPN and receive the peer's QPN; record it in qpn_table.
+// Send this node's info and record the peer's in the config tables.
 static void exchange_qpn(int sock, node_id_t my_id, int my_qpn,
-                         int qpn_table[MAX_KRNL_NODES]) {
-    QpnMsg out_msg = {my_id, my_qpn};
+                         uint64_t my_vaddr, RdmaConfig& cfg) {
+    QpnMsg out_msg = {my_id, my_qpn, my_vaddr};
     QpnMsg in_msg;
-    // Send before receive — both sides do the same, so no deadlock (5 bytes
-    // fit comfortably in the kernel's TCP send buffer).
+    // Send before receive — both sides do the same, so no deadlock (13
+    // bytes fit comfortably in the kernel's TCP send buffer).
     send_exact(sock, &out_msg, sizeof(out_msg));
     recv_exact(sock, &in_msg, sizeof(in_msg));
-    qpn_table[in_msg.node_id] = in_msg.qpn;
+    cfg.qpn_table[in_msg.node_id]   = in_msg.qpn;
+    cfg.vaddr_table[in_msg.node_id] = in_msg.vaddr;
 }
 
 
 RdmaConfig bootstrap_rdma(
     node_id_t                      my_id,
     const std::vector<NodeConfig>& nodes,
-    int                            local_qpn
+    int                            local_qpn,
+    uint64_t                       local_vaddr
 ) {
     RdmaConfig cfg;
     cfg.my_node_id = my_id;
     memset(cfg.qpn_table, 0, sizeof(cfg.qpn_table));
-    cfg.qpn_table[my_id] = local_qpn;
+    memset(cfg.vaddr_table, 0, sizeof(cfg.vaddr_table));
+    cfg.qpn_table[my_id]   = local_qpn;
+    cfg.vaddr_table[my_id] = local_vaddr;
 
     // Count peers on each side.
     int n_lower = 0, n_higher = 0;
@@ -114,7 +121,7 @@ RdmaConfig bootstrap_rdma(
         while (::connect(s, reinterpret_cast<sockaddr*>(&peer), sizeof(peer)) != 0) {
             ::usleep(50000); // 50 ms
         }
-        exchange_qpn(s, my_id, local_qpn, cfg.qpn_table);
+        exchange_qpn(s, my_id, local_qpn, local_vaddr, cfg);
         ::close(s);
     }
 
@@ -124,7 +131,7 @@ RdmaConfig bootstrap_rdma(
     for (int i = 0; i < n_lower; ++i) {
         int s = ::accept(srv, nullptr, nullptr);
         if (s < 0) throw std::runtime_error("accept() failed");
-        exchange_qpn(s, my_id, local_qpn, cfg.qpn_table);
+        exchange_qpn(s, my_id, local_qpn, local_vaddr, cfg);
         ::close(s);
     }
 

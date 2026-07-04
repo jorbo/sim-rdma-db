@@ -28,6 +28,9 @@ struct NodeConfig {
 struct RdmaConfig {
     node_id_t my_node_id;
     int       qpn_table[MAX_KRNL_NODES];
+    //! Device address of each node's RDMA-exposed tree memory; RDMA reads
+    //! target vaddr_table[nid] + local_addr * sizeof(Node)
+    uint64_t  vaddr_table[MAX_KRNL_NODES];
 };
 
 //! Parse a whitespace-separated config file: one
@@ -39,15 +42,19 @@ std::vector<NodeConfig> parse_node_config(const std::string& path);
 //! into the RoCE stack), so a deterministic per-node scheme suffices.
 static inline int qpn_for(node_id_t id) { return QPN_BASE + id; }
 
-//! Exchange QPNs with all peers via TCP on BOOTSTRAP_PORT and return a
-//! fully-populated RdmaConfig.  Uses a lower-id-connects / higher-id-accepts
-//! strategy to avoid deadlock without threads.
+//! Exchange QPNs and memory addresses with all peers via TCP on
+//! BOOTSTRAP_PORT and return a fully-populated RdmaConfig.  Uses a
+//! lower-id-connects / higher-id-accepts strategy to avoid deadlock
+//! without threads.
 //!
-//! @param my_id     This node's id — must appear in @p nodes.
-//! @param nodes     Full list of all nodes (including this one).
-//! @param local_qpn This node's QPN (from qpn_for()).
+//! @param my_id       This node's id — must appear in @p nodes.
+//! @param nodes       Full list of all nodes (including this one).
+//! @param local_qpn   This node's QPN (from qpn_for()).
+//! @param local_vaddr Device address of this node's RDMA-exposed tree
+//!                    memory (TreeDevice::memory_vaddr).
 RdmaConfig bootstrap_rdma(
     node_id_t                   my_id,
     const std::vector<NodeConfig>& nodes,
-    int                         local_qpn
+    int                         local_qpn,
+    uint64_t                    local_vaddr
 );

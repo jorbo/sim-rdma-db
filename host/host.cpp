@@ -5,11 +5,16 @@
 extern "C" {
 #include "../krnl/core/node.h"
 };
+#if __has_include(<CL/cl_ext_xilinx.h>)
+#include <CL/cl_ext_xilinx.h>
+#define HAVE_XILINX_EXT 1
+#endif
 
 
 static void setup_ocl(
 	std::string const& binaryFile,
 	cl::Context& context,
+	cl::Device& device_out,
 	cl::Kernel& krnl1,
 	cl::CommandQueue& q
 ) {
@@ -37,6 +42,7 @@ static void setup_ocl(
 			std::cout << "Device[" << i << "]: program successful!\n";
 			std::cout << "Setting CU(s) up..." << std::endl;
 			OCL_CHECK(err, krnl1 = cl::Kernel(program, "krnl", &err));
+			device_out = device;
 			valid_device = true;
 			break;
 		}
@@ -48,14 +54,50 @@ static void setup_ocl(
 }
 
 
+//! Device-side address of a buffer (Xilinx extension). Peers RDMA-read the
+//! tree memory directly, so its physical address is exchanged at bootstrap.
+static uint64_t device_address(cl::Buffer& buf, cl::Device& device) {
+#ifdef HAVE_XILINX_EXT
+	uint64_t addr = 0;
+	cl_int err = xclGetMemObjectDeviceAddress(
+		buf(), device(), sizeof(addr), &addr);
+	if (err != CL_SUCCESS) {
+		printf("WARNING: xclGetMemObjectDeviceAddress failed (%d); "
+			"advertising vAddr=0\n", err);
+		return 0;
+	}
+	return addr;
+#else
+	(void)buf; (void)device;
+	printf("WARNING: CL/cl_ext_xilinx.h unavailable; advertising vAddr=0\n");
+	return 0;
+#endif
+}
+
+
+TreeDevice tree_device_setup(std::string const& binaryFile, TreeInput& input) {
+	TreeDevice dev;
+	cl_int err;
+
+	setup_ocl(binaryFile, dev.context, dev.device, dev.krnl, dev.q);
+	OCL_CHECK(err, dev.buffer_memory = cl::Buffer(
+		dev.context,
+		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
+		sizeof(Node)*input.memory.size(), input.memory.data(), &err
+	));
+	dev.memory_vaddr = device_address(dev.buffer_memory, dev.device);
+	return dev;
+}
+
+
 static void run_kernel(
 	cl::Context& context,
 	cl::Kernel& krnl1,
 	cl::CommandQueue& q,
+	cl::Buffer& buffer_memory,
 	bptr_t& root,
 	std::vector<Request, aligned_allocator<Request> >& requests,
 	std::vector<Response, aligned_allocator<Response> >& responses,
-	std::vector<Node, aligned_allocator<Node> >& memory,
 	const RdmaConfig& rdma
 ) {
 	constexpr int FROM_HOST_FLAGS = 0;
@@ -66,16 +108,12 @@ static void run_kernel(
 	int qpn_table[MAX_KRNL_NODES];
 	memcpy(qpn_table, rdma.qpn_table, sizeof(qpn_table));
 
-	// BUFFERS
+	// BUFFERS (buffer_memory was created before bootstrap; see
+	// tree_device_setup)
 	OCL_CHECK(err, cl::Buffer buffer_root(
 		context,
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
 		sizeof(bptr_t), &root, &err
-	));
-	OCL_CHECK(err, cl::Buffer buffer_memory(
-		context,
-		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
-		sizeof(Node)*memory.size(), memory.data(), &err
 	));
 	OCL_CHECK(err, cl::Buffer buffer_requests(
 		context,
@@ -152,19 +190,14 @@ static void run_kernel(
 }
 
 
-TreeOutput run_fpga_tree(TreeInput& input, const RdmaConfig& rdma,
-                         std::string const& binaryFile) {
-	cl::Context context;
-	cl::Kernel krnl;
-	cl::CommandQueue q;
-
+TreeOutput run_fpga_tree(TreeDevice& dev, TreeInput& input,
+                         const RdmaConfig& rdma) {
 	TreeOutput output;
 	output.responses.resize(input.requests.size(), {.opcode=NOP});
 
-	setup_ocl(binaryFile, context, krnl, q);
 	run_kernel(
-		context, krnl, q,
-		input.root, input.requests, output.responses, input.memory, rdma
+		dev.context, dev.krnl, dev.q, dev.buffer_memory,
+		input.root, input.requests, output.responses, rdma
 	);
 	memcpy(output.memory.data(), input.memory.data(), MEM_SIZE*sizeof(Node));
 	output.root = input.root; // root may have been updated by splits
