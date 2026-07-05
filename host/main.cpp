@@ -83,6 +83,19 @@ int main(int argc, char** argv) {
 			std::cout << "RDMA selftest: reading " << sizeof(Node)
 			          << " bytes from table node..." << std::endl;
 			roce_manual_read(dev, /*raddr=*/0, /*laddr=*/0, sizeof(Node));
+			// Landing pad = start of our exposed memory. Expect the table
+			// node's leaf 0: keys 1,2 then INVALID (0xffffffff).
+			cl_int err;
+			OCL_CHECK(err, err = dev.q.enqueueMigrateMemObjects(
+				{dev.buffer_memory}, CL_MIGRATE_MEM_OBJECT_HOST));
+			dev.q.finish();
+			const uint32_t* w = (const uint32_t*)input.memory.data();
+			std::cout << "RDMA selftest landing bytes:" << std::hex;
+			for (int i = 0; i < 16; ++i)
+				std::cout << " " << w[i];
+			std::cout << std::dec << std::endl;
+			std::cout << "  (expect: 1 2 ffffffff ffffffff ... for leaf 0)"
+			          << std::endl;
 		}
 
 		// The 22-key workload always splits the root off leaf 0, so a
