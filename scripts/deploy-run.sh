@@ -61,7 +61,7 @@ echo "== Starting table node on $TABLE (background) =="
 TABLE_PID=$(ssh "$TABLE" \
 	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
 	 nohup ./host_exe krnl.server0.xclbin 0 $CFG_BASE \
-	 > table.log 2>&1 & echo \$!")
+	 < /dev/null > table.log 2>&1 & echo \$!")
 echo "table node pid $TABLE_PID; log: $REMOTE_DIR/table.log"
 
 cleanup() {
