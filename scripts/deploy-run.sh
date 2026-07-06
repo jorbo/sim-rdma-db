@@ -27,6 +27,9 @@ HEAD=${2:?usage: deploy-run.sh <table-user@host> <head-user@host> [nodes.cfg]}
 CFG=${3:-nodes.cfg}
 REMOTE_DIR=${REMOTE_DIR:-btree-run}
 SELFTEST=${RDMA_SELFTEST:-1}
+# Non-interactive ssh does not load the XRT environment; source it
+# explicitly in every remote run command.
+XRT_SETUP=${XRT_SETUP:-/opt/xilinx/xrt/setup.sh}
 
 XSA=xilinx_u280_gen3x16_xdma_1_202211_1
 BD0=build_dir.hw.$XSA.server0/krnl.xclbin
@@ -43,8 +46,12 @@ if ! awk '!/^#/ && NF > 0 && NF < 3 {exit 1}' "$CFG"; then
 fi
 
 echo "== Copying artifacts =="
-ssh "$TABLE" "mkdir -p $REMOTE_DIR"
-ssh "$HEAD"  "mkdir -p $REMOTE_DIR"
+for h in "$TABLE" "$HEAD"; do
+	ssh "$h" "mkdir -p $REMOTE_DIR && [ -f $XRT_SETUP ]" || {
+		echo "ERROR: $XRT_SETUP not found on $h — is XRT installed?" >&2
+		exit 1
+	}
+done
 scp host_exe "$CFG" "$TABLE:$REMOTE_DIR/"
 scp "$BD0" "$TABLE:$REMOTE_DIR/krnl.server0.xclbin"
 scp host_exe "$CFG" "$HEAD:$REMOTE_DIR/"
@@ -52,7 +59,8 @@ scp "$BD1" "$HEAD:$REMOTE_DIR/krnl.server1.xclbin"
 
 echo "== Starting table node on $TABLE (background) =="
 TABLE_PID=$(ssh "$TABLE" \
-	"cd $REMOTE_DIR && nohup ./host_exe krnl.server0.xclbin 0 $CFG_BASE \
+	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
+	 nohup ./host_exe krnl.server0.xclbin 0 $CFG_BASE \
 	 > table.log 2>&1 & echo \$!")
 echo "table node pid $TABLE_PID; log: $REMOTE_DIR/table.log"
 
@@ -67,7 +75,8 @@ trap cleanup EXIT
 echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST) =="
 set +e
 ssh "$HEAD" \
-	"cd $REMOTE_DIR && RDMA_SELFTEST=$SELFTEST ./host_exe \
+	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
+	 RDMA_SELFTEST=$SELFTEST ./host_exe \
 	 krnl.server1.xclbin 1 $CFG_BASE" | tee head.log
 RC=${PIPESTATUS[0]}
 set -e
