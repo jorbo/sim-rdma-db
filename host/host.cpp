@@ -83,17 +83,25 @@ TreeDevice tree_device_setup(std::string const& binaryFile, TreeInput& input) {
 
 	setup_ocl(binaryFile, dev.context, dev.device, dev.program, dev.krnl,
 	          dev.q);
+	dev.rdma_landing.resize(1);
 	OCL_CHECK(err, dev.buffer_memory = cl::Buffer(
 		dev.context,
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
 		sizeof(Node)*input.memory.size(), input.memory.data(), &err
+	));
+	OCL_CHECK(err, dev.buffer_rdma = cl::Buffer(
+		dev.context,
+		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
+		sizeof(Node)*dev.rdma_landing.size(), dev.rdma_landing.data(), &err
 	));
 	// A buffer gets its memory-bank index from the kernel argument it is
 	// bound to, and device residence is allocated lazily on first use.
 	// Bind and migrate here so the buffer has a queryable device address
 	// before the bootstrap; run_kernel re-binds the same arg later.
 	OCL_CHECK(err, err = dev.krnl.setArg(1, dev.buffer_memory));
-	OCL_CHECK(err, err = dev.q.enqueueMigrateMemObjects({dev.buffer_memory}, 0));
+	OCL_CHECK(err, err = dev.krnl.setArg(11, dev.buffer_rdma));
+	OCL_CHECK(err, err = dev.q.enqueueMigrateMemObjects(
+		{dev.buffer_memory, dev.buffer_rdma}, 0));
 	dev.q.finish();
 	dev.memory_vaddr = device_address(dev.buffer_memory, dev.device);
 	return dev;
@@ -105,6 +113,7 @@ static void run_kernel(
 	cl::Kernel& krnl1,
 	cl::CommandQueue& q,
 	cl::Buffer& buffer_memory,
+	cl::Buffer& buffer_resp_in,
 	bptr_t& root,
 	std::vector<Request, aligned_allocator<Request> >& requests,
 	std::vector<Response, aligned_allocator<Response> >& responses,
@@ -140,16 +149,6 @@ static void run_kernel(
 		CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
 		sizeof(qpn_table), qpn_table, &err
 	));
-	// resp_in: HBM-resident RDMA-read landing pad (single slot). On hardware
-	// it shares HBM[0] with rocetest m00_axi; the host never touches the
-	// contents, but XRT requires every pointer argument to be bound.
-	std::vector<Node, aligned_allocator<Node> > resp_in(1);
-	OCL_CHECK(err, cl::Buffer buffer_resp_in(
-		context,
-		CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
-		sizeof(Node)*resp_in.size(), resp_in.data(), &err
-	));
-
 	// KERNEL ARGS (must match krnl() parameter order)
 	int loop_max = 6 * (int)requests.size();
 	int op_max   = (int)(1.25 * requests.size());
@@ -207,7 +206,7 @@ TreeOutput run_fpga_tree(TreeDevice& dev, TreeInput& input,
 
 	run_kernel(
 		dev.context, dev.krnl, dev.q, dev.buffer_memory,
-		input.root, input.requests, output.responses, rdma
+		dev.buffer_rdma, input.root, input.requests, output.responses, rdma
 	);
 	memcpy(output.memory.data(), input.memory.data(), MEM_SIZE*sizeof(Node));
 	output.root = input.root; // root may have been updated by splits

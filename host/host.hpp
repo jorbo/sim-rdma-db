@@ -20,6 +20,9 @@ struct TreeDevice {
 	cl::Buffer buffer_memory;
 	//! Device address of buffer_memory, sent to peers during bootstrap
 	uint64_t memory_vaddr;
+	//! Single-node RDMA response landing slot, read by krnl::resp_in.
+	std::vector<Node, aligned_allocator<Node> > rdma_landing;
+	cl::Buffer buffer_rdma;
 };
 
 //! Program the device and allocate the RDMA-exposed tree memory buffer.

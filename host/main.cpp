@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
 		                                 dev.memory_vaddr, /*local_root=*/0);
 		print_rdma(rdma, nodes.size());
 		bool roce = configure_roce(dev, rdma, nodes, my_id,
-		                           dev.buffer_memory);
+		                           dev.buffer_rdma);
 
 		// Bring-up step 3: host-driven RDMA READ of the table node's
 		// first node into local offset 0, no B-tree kernel involved.
@@ -87,11 +87,11 @@ int main(int argc, char** argv) {
 			// node's leaf 0: keys 1,2 then INVALID (0xffffffff).
 			cl_int err;
 			OCL_CHECK(err, err = dev.q.enqueueMigrateMemObjects(
-				{dev.buffer_memory}, CL_MIGRATE_MEM_OBJECT_HOST));
+				{dev.buffer_rdma}, CL_MIGRATE_MEM_OBJECT_HOST));
 			dev.q.finish();
-			const uint32_t* w = (const uint32_t*)input.memory.data();
+			const uint32_t* w = (const uint32_t*)dev.rdma_landing.data();
 			std::cout << "RDMA selftest landing bytes:" << std::hex;
-			for (int i = 0; i < 16; ++i)
+			for (size_t i = 0; i < sizeof(Node) / sizeof(uint32_t); ++i)
 				std::cout << " " << w[i];
 			std::cout << std::dec << std::endl;
 			std::cout << "  (expect: 1 2 ffffffff ffffffff ... for leaf 0)"
