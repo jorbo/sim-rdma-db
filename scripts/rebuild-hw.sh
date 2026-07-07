@@ -11,7 +11,7 @@ Options:
   --platform <platform>  Vitis platform name or .xpfm path. Can also use PLATFORM.
   --server <0|1|all>    Build one server xclbin or both. Default: all.
   --no-host             Skip rebuilding host_exe.
-  --no-force            Do not delete existing krnl.xclbin before make build.
+  --no-force            Do not delete existing Vitis link/package outputs.
   --dry-run             Print commands without running them.
   -h, --help            Show this help.
 
@@ -104,8 +104,11 @@ fi
 
 for srv in "${servers[@]}"; do
 	build_dir="build_dir.hw.$xsa.server$srv"
+	temp_dir="_x.hw.$xsa.server$srv"
+	package_dir="package.hw.server$srv"
 	if [[ "$force_relink" -eq 1 ]]; then
-		run rm -f "$build_dir/krnl.xclbin"
+		run rm -rf "$temp_dir" "$package_dir"
+		run rm -f "$build_dir/krnl.link.xclbin" "$build_dir/krnl.xclbin"
 	fi
 	run make build TARGET=hw SERVER="$srv" PLATFORM="$platform" "${make_args[@]}"
 done
