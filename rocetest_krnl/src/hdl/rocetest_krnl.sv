@@ -367,7 +367,7 @@ assign s_axis_net_rx_tready = axis_net_rx_data_aclk.ready;
 assign axis_roce_read_cmd.valid = m_axis_roce_read_cmd.valid;
 assign axis_roce_read_cmd.address = m_axis_roce_read_cmd.data[63:0];
 assign axis_roce_read_cmd.length = m_axis_roce_read_cmd.data[95:64];
-assign m_axis_roce_read_cmd.ready = axis_roce_write_cmd.ready;
+assign m_axis_roce_read_cmd.ready = axis_roce_read_cmd.ready;
 
 assign axis_roce_write_cmd.valid = m_axis_roce_write_cmd.valid;
 assign axis_roce_write_cmd.address = m_axis_roce_write_cmd.data[63:0];
