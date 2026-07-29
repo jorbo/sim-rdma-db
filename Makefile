@@ -164,7 +164,7 @@ installip-hls:
 # Requires a prior `make installip-hls` (or any csynth) so the RTL is present
 # in the krnl HLS project. Fails fast if the TB writes "Error:" to stdout, so
 # tests should print "Status: ..." messages instead.
-.PHONY: cosim cosim-krnl csim-krnl
+.PHONY: cosim cosim-krnl csim-krnl test-roce-setup
 cosim cosim-krnl:
 	mkdir -p build
 	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
@@ -174,6 +174,14 @@ csim-krnl:
 	mkdir -p build
 	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
 	$(MAKE) -C build csim.krnl
+
+test-roce-setup:
+	mkdir -p build
+	iverilog -g2012 -s tb_roce_setup_control \
+		-o build/tb_roce_setup_control \
+		rocetest_krnl/src/hdl/roce_setup_control.sv \
+		rocetest_krnl/test/tb_roce_setup_control.sv
+	vvp build/tb_roce_setup_control
 
 # 2) rocetest_krnl RTL kernel — packaged via Vivado Tcl
 installip-rocetest:

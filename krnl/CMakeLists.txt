@@ -46,6 +46,7 @@ set(EXAMPLE_HLS_DEPENDS
 	${CMAKE_CURRENT_SOURCE_DIR}/test/insert/split-root.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test/insert/until-it-breaks.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test/search/one-internal.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/test/search/remote-root-local-leaf.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test/search/root-is-leaf.cpp)
 
 

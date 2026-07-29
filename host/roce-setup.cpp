@@ -53,6 +53,7 @@ bool configure_roce(
 	cl::Buffer &mem)
 {
 	cl_int err;
+	(void)rdma;
 
 	cl::Kernel k(dev.program, "rocetest_krnl", &err);
 	if (err != CL_SUCCESS)
@@ -85,11 +86,9 @@ bool configure_roce(
 	OCL_CHECK(err, err = k.setArg(ARG_RIP, ip_to_u32(peer->fpga_ip)));
 	OCL_CHECK(err, err = k.setArg(ARG_LIP, ip_to_u32(me->fpga_ip)));
 	OCL_CHECK(err, err = k.setArg(ARG_RUDP, (uint32_t)RDMA_UDP_PORT));
-	// TODO(bring-up): confirm whether the stack expects the local or the
-	// remote region base here; first light uses the peer's exposed memory
-	// (the target of our outgoing reads).
-	OCL_CHECK(err, err = k.setArg(ARG_VADDR,
-								  (uint64_t)rdma.vaddr_table[peer->id]));
+	// qpContext describes this node's inbound logical RDMA window. The AXI
+	// buffer's physical base is supplied separately through ARG_MEM_PTR.
+	OCL_CHECK(err, err = k.setArg(ARG_VADDR, (uint64_t)0));
 	OCL_CHECK(err, err = k.setArg(ARG_RKEY, (uint32_t)RKEY_FIRST_LIGHT));
 	OCL_CHECK(err, err = k.setArg(ARG_OP, (uint32_t)ROCE_OP_NONE));
 	OCL_CHECK(err, err = k.setArg(ARG_RADDR, (uint64_t)0));

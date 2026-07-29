@@ -79,7 +79,9 @@ int main(int argc, char** argv) {
 		// Bring-up step 3: host-driven RDMA READ of the table node's
 		// first node into local offset 0, no B-tree kernel involved.
 		// Run with RDMA_SELFTEST=1 and inspect the landing bytes.
-		if (roce && getenv("RDMA_SELFTEST") != nullptr) {
+		const char* rdma_selftest = getenv("RDMA_SELFTEST");
+		if (roce && rdma_selftest != nullptr &&
+		    std::strcmp(rdma_selftest, "1") == 0) {
 			std::cout << "RDMA selftest: reading " << sizeof(Node)
 			          << " bytes from table node..." << std::endl;
 			roce_manual_read(dev, /*raddr=*/0, /*laddr=*/0, sizeof(Node));

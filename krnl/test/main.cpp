@@ -32,6 +32,14 @@ int main() {
 		std::cerr << "\nFailed!\n" << std::endl;
 		failed++;
 	}
+	std::cout << "--- Remote Root / Local Leaf ---" << std::endl;
+	if (remote_root_local_leaf(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
+		std::cout << "\nPassed!\n" << std::endl;
+		passed++;
+	} else {
+		std::cerr << "\nFailed!\n" << std::endl;
+		failed++;
+	}
 
 	std::cout << "\n\n=== Insert Tests ===" << std::endl;
 	std::cout << "--- Leaf Node ---" << std::endl;
@@ -62,5 +70,5 @@ int main() {
 	std::cout << "\n" << passed << " tests passed, "
 		<< failed << " tests failed." << std::endl;
 
-	return 0;
+	return failed != 0;
 }

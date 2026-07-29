@@ -42,6 +42,7 @@ add_files -tb ${CMAKE_CURRENT_SOURCE_DIR}/test/insert/leaf-node.cpp -cflags "-I$
 add_files -tb ${CMAKE_CURRENT_SOURCE_DIR}/test/insert/split-root.cpp -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files -tb ${CMAKE_CURRENT_SOURCE_DIR}/test/insert/until-it-breaks.cpp -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files -tb ${CMAKE_CURRENT_SOURCE_DIR}/test/search/one-internal.cpp -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
+add_files -tb ${CMAKE_CURRENT_SOURCE_DIR}/test/search/remote-root-local-leaf.cpp -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 add_files -tb ${CMAKE_CURRENT_SOURCE_DIR}/test/search/root-is-leaf.cpp -cflags "-I${CMAKE_CURRENT_BINARY_DIR} ${DEFS}"
 
 

@@ -28,7 +28,9 @@ static Node fetch_node(
 
 	ap_uint<64> raddr = (ap_uint<64>)laddr * sizeof(Node);
 	rdma_bram_read(
-		(ap_uint<24>)qpn_table[nid],
+		// Outgoing metadata carries the local connection-table lookup key.
+		// That entry supplies the peer's packet-destination QPN.
+		(ap_uint<24>)qpn_table[local_id],
 		/*laddr=*/0,
 		raddr,
 		sizeof(Node),
