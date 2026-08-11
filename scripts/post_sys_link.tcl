@@ -49,7 +49,6 @@
 set __TCLID "(Post-linking QSFP0 Tcl hook): "
 
 set __ip_list [get_property ip_repo_paths [current_project]]
-lappend __ip_list /scratch/pyuvaraj/Vitis_RoCE_W/Vitis_RoCE/build/fpga-network-stack/iprepo
 set_property ip_repo_paths $__ip_list [current_project]
 update_ip_catalog
 
