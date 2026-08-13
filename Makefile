@@ -201,11 +201,17 @@ installip-cmac:
 
 # Rebuild each .xo when its sources change, not only when it is missing.
 # Without source deps a stale .xo in iprepo gets linked silently.
+NETWORK_HLS_SRCS := $(shell find fpga-network-stack/hls -type f \
+		\( -name '*.cpp' -o -name '*.hpp' -o -name 'CMakeLists.txt' \
+		-o -name 'make.tcl.in' -o -name '*_config.hpp.in' \))
+
 $(IP_REPO)/krnl.xo: $(wildcard krnl/hls/*.cpp) $(wildcard krnl/hls/*.hpp) \
-		$(wildcard krnl/core/*.c) $(wildcard krnl/core/*.h)
+		$(wildcard krnl/core/*.c) $(wildcard krnl/core/*.h) \
+		$(NETWORK_HLS_SRCS) CMakeLists.txt fpga-network-stack/CMakeLists.txt
 	$(MAKE) installip-hls
 
-$(IP_REPO)/rocetest_krnl.xo: $(wildcard rocetest_krnl/src/hdl/*) \
+$(IP_REPO)/rocetest_krnl.xo: $(IP_REPO)/krnl.xo \
+		$(wildcard rocetest_krnl/src/hdl/*) \
 		rocetest_krnl/package_rocetest_krnl.tcl rocetest_krnl/rocetest_krnl.xml
 	$(MAKE) installip-rocetest
 

@@ -599,7 +599,18 @@ void CACHE(
 	hls::stream<net_axis<WIDTH> >&			s_axis_local_read_data
 ){
 	static cache_block BRAM_MEM_POOL [CACHE_SIZE]; //[128][128];
-	enum cacheHandlerState{CMD, WRITE, DIRTY_CHECK, WRITE_BACK, WRITE_FETCH_LINE, READ};
+	enum cacheHandlerState{
+		CMD,
+		WRITE,
+		DIRTY_CHECK,
+		WRITE_BACK,
+		WRITE_FETCH_LINE,
+		READ,
+		DMA_WRITE_CMD,
+		DMA_WRITE_DATA,
+		DMA_READ_CMD,
+		DMA_READ_DATA
+	};
 	enum readDataDestination{INIT, LOCAL, REMOTE};
 	enum cacheReturnState {WRITE_RET, READ_RET};
 	static cacheHandlerState state = CMD;
@@ -653,18 +664,66 @@ void CACHE(
 					std::cout << "Write command recieved" << std::endl;
 				#endif
 				m_axis_cache_write_cmd.read(command);
-				//line_iterator = command.data.addr%CACHE_SIZE;
-				write_flag = 0;
-				state = WRITE; 
+				// Normal RDMA traffic must reach the external DataMover so its
+				// landing-buffer write produces the completion status krnl waits for.
+				if (command.dest == ROUTE_DMA) {
+					state = DMA_WRITE_CMD;
+				}
+				else {
+					//line_iterator = command.data.addr%CACHE_SIZE;
+					write_flag = 0;
+					state = WRITE;
+				}
 			} else if (!m_axis_cache_read_cmd.empty()) {
 				#ifdef CACHE_DEBUG
 					std::cout << "Read command recieved" << std::endl;
 				#endif
 				m_axis_cache_read_cmd.read(command);
-				state = READ; 
-				return_stream = REMOTE;
+				if (command.dest == ROUTE_DMA) {
+					state = DMA_READ_CMD;
+				}
+				else {
+					state = READ;
+					return_stream = REMOTE;
+				}
 			}
 			break; 
+		}
+		case DMA_WRITE_CMD: {
+			if (!m_axis_mem_write_cmd.full()) {
+				m_axis_mem_write_cmd.write(command);
+				state = DMA_WRITE_DATA;
+			}
+			break;
+		}
+		case DMA_WRITE_DATA: {
+			if (!m_axis_cache_write_data.empty() && !m_axis_mem_write_data.full()) {
+				routed_net_axis<WIDTH> dma_word;
+				m_axis_cache_write_data.read(dma_word);
+				m_axis_mem_write_data.write(dma_word);
+				if (dma_word.last) {
+					state = CMD;
+				}
+			}
+			break;
+		}
+		case DMA_READ_CMD: {
+			if (!m_axis_mem_read_cmd.full()) {
+				m_axis_mem_read_cmd.write(command);
+				state = DMA_READ_DATA;
+			}
+			break;
+		}
+		case DMA_READ_DATA: {
+			if (!s_axis_mem_read_data.empty() && !s_axis_cache_read_data.full()) {
+				net_axis<WIDTH> dma_word;
+				s_axis_mem_read_data.read(dma_word);
+				s_axis_cache_read_data.write(dma_word);
+				if (dma_word.last) {
+					state = CMD;
+				}
+			}
+			break;
 		}
 
 		case WRITE: {
