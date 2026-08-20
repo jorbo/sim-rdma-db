@@ -191,10 +191,11 @@ test-roce-completion:
 		rocetest_krnl/test/tb_roce_completion_adapter.sv
 	vvp build/tb_roce_completion_adapter
 
-# Full source-controlled RDMA read regression: APP_READ -> network response ->
-# external DMA landing write, responder DMA, plus the RTL status bridge.
+# Full source-controlled HLS regression: APP_READ -> network response ->
+# external DMA landing write and responder DMA. Run test-roce-completion
+# separately on machines with Icarus Verilog installed.
 # Requires Vitis/Vivado HLS and therefore runs on Wolverine, not this dev shell.
-test-roce-rdma: test-roce-completion
+test-roce-rdma:
 	mkdir -p build
 	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
 	$(MAKE) -C build csim.rocev2
