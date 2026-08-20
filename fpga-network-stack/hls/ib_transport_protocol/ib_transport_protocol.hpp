@@ -673,16 +673,14 @@ struct memCmdInternal
 	//ap_uint<1>	last;
 //#if POINTER_CHASING_EN
 	axiRoute route;
-//#endif
+	//#endif
 	memCmdInternal() {}
 	memCmdInternal(ap_uint<16> qpn, ap_uint<64> addr, ap_uint<32> len)
-#if !POINTER_CHASING_EN
-		:qpn(qpn), addr(addr), len(len) {}
-#else
 		:qpn(qpn), addr(addr), len(len), route(ROUTE_DMA) {}
+	#if POINTER_CHASING_EN
 	memCmdInternal(ap_uint<16> qpn, ap_uint<64> addr, ap_uint<32> len, axiRoute route)
 		:qpn(qpn), addr(addr), len(len), route(route) {}
-#endif
+	#endif
 };
 
 template <int WIDTH>

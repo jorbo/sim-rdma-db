@@ -54,7 +54,9 @@ set(EXAMPLE_HLS_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/rocev2.cpp 
     ${CMAKE_CURRENT_SOURCE_DIR}/rocev2.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/rocev2_config.hpp.in
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_rocev2.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_rocev2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/write_read_read_large_receiver.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/rdma_read_response_receiver.in)
 
 
 #Setup HLS custom targets

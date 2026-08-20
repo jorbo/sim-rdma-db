@@ -26,6 +26,7 @@
  */
 #include "rocev2.hpp"
 #include <fstream>
+#include <iostream>
 #include <vector>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -34,6 +35,8 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h> /* Added for the nonblocking socket */
+#include <cstdlib>
+#include <new>
 
 #include "../axi_utils.hpp" //TODO why is this needed here
 #include "rocev2_config.hpp"
@@ -41,9 +44,94 @@
 using namespace hls;
 #include "newFakeDram.hpp"
 
+static const uint16_t READ_RESPONSE_LOCAL_ADDR = 0x0200;
+static const uint16_t READ_RESPONSE_LENGTH = 64;
+
+static int verify_default_dma_route()
+{
+	void* storage = std::malloc(sizeof(memCmdInternal));
+	if (storage == NULL)
+	{
+		std::cerr << "[FAILED] could not allocate memCmdInternal test storage" << std::endl;
+		return 1;
+	}
+
+	memset(storage, 0xff, sizeof(memCmdInternal));
+	memCmdInternal* command = new (storage) memCmdInternal(0x11, 0x10, 0x40);
+	const bool routeIsDma = (command->route == ROUTE_DMA);
+	command->~memCmdInternal();
+	std::free(storage);
+
+	if (!routeIsDma)
+	{
+		std::cerr << "[FAILED] three-argument memCmdInternal did not initialize ROUTE_DMA" << std::endl;
+		return 1;
+	}
+	return 0;
+}
+
 class fakeDRAM {
 public:
-	fakeDRAM() :writeState(CMD), readState(INIT) { memory = new ap_uint<8>[65536]; readAddr = 0; }
+	fakeDRAM()
+		: CurrReq(IDLE), writeState(CMD), readState(INIT), writeAddr(0),
+		  writeLen(0), readAddr(0), readLen(0), routedWriteCmdCount(0),
+		  routedReadCmdCount(0), routedWriteBytes(0), routedReadBytes(0),
+		  routedWriteLastCount(0), routedReadLastCount(0), badRoute(false),
+		  badWriteCommand(false), badReadCommand(false)
+	{
+		memory = new ap_uint<8>[65536];
+		for (int i = 0; i < 65536; ++i)
+		{
+			memory[i] = 0;
+		}
+	}
+
+	int verify_routed_dma_path() const
+	{
+		int failures = 0;
+		if (badRoute)
+		{
+			std::cerr << "[FAILED] normal RDMA traffic left the ROUTE_DMA path" << std::endl;
+			failures++;
+		}
+		if (badWriteCommand)
+		{
+			std::cerr << "[FAILED] RDMA write command address/length mismatch" << std::endl;
+			failures++;
+		}
+		if (badReadCommand)
+		{
+			std::cerr << "[FAILED] RDMA read command address/length mismatch" << std::endl;
+			failures++;
+		}
+		if (routedWriteCmdCount != 3 || routedWriteBytes != 192 || routedWriteLastCount != 3)
+		{
+			std::cerr << "[FAILED] RDMA write path: commands=" << routedWriteCmdCount
+					  << " bytes=" << routedWriteBytes
+					  << " tlast=" << routedWriteLastCount
+					  << " (expected 3, 192, 3)" << std::endl;
+			failures++;
+		}
+		if (routedReadCmdCount != 1 || routedReadBytes != 64 || routedReadLastCount != 1)
+		{
+			std::cerr << "[FAILED] RDMA read path: commands=" << routedReadCmdCount
+					  << " bytes=" << routedReadBytes
+					  << " tlast=" << routedReadLastCount
+					  << " (expected 1, 64, 1)" << std::endl;
+			failures++;
+		}
+		for (int i = 0; i < READ_RESPONSE_LENGTH; ++i)
+		{
+			if (memory[READ_RESPONSE_LOCAL_ADDR + i] != (0xa0 + i))
+			{
+				std::cerr << "[FAILED] RDMA read response payload mismatch at byte "
+						  << i << std::endl;
+				failures++;
+				break;
+			}
+		}
+		return failures;
+	}
 
 	template <int WIDTH>
 	void process_writes(stream<memCmd>& cmdIn, stream<routed_net_axis<WIDTH> >& dataIn)//, stream<mmStatus>& statusOut)
@@ -61,7 +149,7 @@ public:
 				{
 					CurrReq = WRITES;
 					cmdIn.read(cmd);
-					writeAddr = cmd.addr(15, 0) * 4;
+					writeAddr = cmd.addr(15, 0);
 					uint16_t tempLen = (uint16_t) cmd.len(15, 0);
 					writeLen = (int) tempLen;
 					std::cout << "MEMORY WRITE, total length: " << std::dec << writeLen << std::endl;
@@ -117,7 +205,23 @@ public:
 				{
 					CurrReq = WRITES;
 					cmdIn.read(cmd);
-					writeAddr = cmd.data.addr(15, 0) * 4;
+					routedWriteCmdCount++;
+					if (cmd.dest != ROUTE_DMA)
+					{
+						badRoute = true;
+					}
+					if ((routedWriteCmdCount == 1 &&
+						 (cmd.data.addr != 0 || cmd.data.len != 64)) ||
+						(routedWriteCmdCount == 2 &&
+						 (cmd.data.addr != 64 || cmd.data.len != 64)) ||
+						(routedWriteCmdCount == 3 &&
+						 (cmd.data.addr != READ_RESPONSE_LOCAL_ADDR ||
+						  cmd.data.len != READ_RESPONSE_LENGTH)) ||
+						routedWriteCmdCount > 3)
+					{
+						badWriteCommand = true;
+					}
+					writeAddr = cmd.data.addr(15, 0);
 					uint16_t tempLen = (uint16_t) cmd.data.len(15, 0);
 					writeLen = (int) tempLen;
 					std::cout << "MEMORY WRITE, total length: " << std::dec << writeLen << std::endl;
@@ -128,16 +232,21 @@ public:
 				if (!dataIn.empty())
 				{
 					dataIn.read(inWord);
+					if (inWord.dest != ROUTE_DMA)
+					{
+						badRoute = true;
+					}
 					counter++;
 					std::cout << "MEMORY WRITE ADDR: " << std::hex << writeAddr/4 << ", dest: " << inWord.dest << ", counter: " << std::dec << counter << std::endl; //" length: " << keepToLen(inWord.keep) << std::endl;
 					print(std::cout, inWord.data);
 					std::cout << std::endl;
 					for (int i = 0; i < (WIDTH/8); i++)
 					{
-							if (inWord.keep[i])
-							{
-								memory[writeAddr] = inWord.data((i*8)+7, i*8);
-							}
+						if (inWord.keep[i])
+						{
+							memory[writeAddr] = inWord.data((i*8)+7, i*8);
+							routedWriteBytes++;
+						}
 							// else
 							// {
 							// 	break;
@@ -146,6 +255,7 @@ public:
 					}
 					if (inWord.last)
 					{
+						routedWriteLastCount++;
 						//mmStatus status;
 						//status.okay = 1;
 						//statusOut.write(status);
@@ -183,7 +293,7 @@ public:
 				{
 					CurrReq = READS;
 					cmdIn.read(cmd);
-					readAddr = cmd.addr(15, 0) * 4;
+					readAddr = cmd.addr(15, 0);
 					uint16_t tempLen = (uint16_t) cmd.len(15, 0);
 					readLen = (int) tempLen;
 					std::cout << "MEMORY READ, addr: " << readAddr << ", length" << readLen << std::endl;
@@ -242,7 +352,16 @@ public:
 				{
 					CurrReq = READS;
 					cmdIn.read(cmd);
-					readAddr = cmd.data.addr(15, 0) * 4;
+					routedReadCmdCount++;
+					if (cmd.dest != ROUTE_DMA)
+					{
+						badRoute = true;
+					}
+					if (routedReadCmdCount != 1 || cmd.data.addr != 16 || cmd.data.len != 64)
+					{
+						badReadCommand = true;
+					}
+					readAddr = cmd.data.addr(15, 0);
 					uint16_t tempLen = (uint16_t) cmd.data.len(15, 0);
 					readLen = (int) tempLen;
 					std::cout << "MEMORY READ, addr: " << readAddr << ", length: " << readLen << " true length: " << cmd.data.len << std::endl;
@@ -259,6 +378,7 @@ public:
 					outWord.keep++;
 					readLen--;
 					readAddr++;
+					routedReadBytes++;
 					i++;
 				}
 				outWord.last = (readLen == 0);
@@ -268,6 +388,7 @@ public:
 				dataOut.write(outWord);
 				if (outWord.last)
 				{
+					routedReadLastCount++;
 					CurrReq = IDLE;
 					readState = CMD;
 				}
@@ -277,7 +398,7 @@ public:
 private:
 	enum fsmStateType {INIT, CMD, DATA};
 	enum MemProc {IDLE, READS, WRITES}; //Janky fix to guarantee sequential read/write behavior
-	MemProc CurrReq = IDLE;				//Could probably just have the two fsms check the others state
+	MemProc CurrReq;				//Could probably just have the two fsms check the others state
 	fsmStateType writeState;
 	fsmStateType readState;
 	ap_uint<8>* memory;
@@ -285,9 +406,20 @@ private:
 	uint16_t writeLen;
 	uint16_t readAddr;
 	uint16_t readLen;
+	int routedWriteCmdCount;
+	int routedReadCmdCount;
+	int routedWriteBytes;
+	int routedReadBytes;
+	int routedWriteLastCount;
+	int routedReadLastCount;
+	bool badRoute;
+	bool badWriteCommand;
+	bool badReadCommand;
 };
 
-int test_rx(fakeDRAM* memory, std::ifstream& inputFile, std::ofstream& outputFile, ap_uint<128>& local_ip_address, ap_uint<128>& remote_ip_address)
+int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
+			std::ifstream& readResponseInputFile, std::ofstream& outputFile,
+			ap_uint<128>& local_ip_address, ap_uint<128>& remote_ip_address)
 {
 #pragma HLS inline region off
 
@@ -384,6 +516,42 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile, std::ofstream& outputFil
 				regInvalidPsnDropCount);
 		count++;
 	}
+
+	// Issue a normal initiator-side RDMA read. The matching response fixture below
+	// must land in external DMA memory before the completion bridge can fire.
+	s_axis_tx_meta.write(txMeta(APP_READ, 0x11, READ_RESPONSE_LOCAL_ADDR, 0x1000,
+							 READ_RESPONSE_LENGTH));
+	while (count < 2000)
+	{
+		convertStreamWidth<DATA_WIDTH, 26>(m_axis_tx_data, m_axis_tx_data128);
+		rocev2<DATA_WIDTH>(s_axis_rx_data,
+				//m_axis_rx_data,
+				s_axis_tx_meta,
+				s_axis_tx_data,
+				m_axis_tx_data,
+				m_axis_mem_write_cmd,
+				m_axis_mem_read_cmd,
+				//s_axis_mem_write_status,
+				m_axis_mem_write_data,
+				s_axis_mem_read_data,
+				m_axis_local_write_cmd,
+				m_axis_local_read_cmd,
+				m_axis_local_write_data,
+				s_axis_local_read_data,
+				s_axis_qp_interface,
+				s_axis_qp_conn_interface,
+#if POINTER_CHASING_EN
+				m_axis_rx_pcmeta,
+				s_axis_tx_pcmeta,
+#endif
+				local_ip_address,
+				regCrcDropPkgCount,
+				regInvalidPsnDropCount);
+		memory->process_writes<DATA_WIDTH>(m_axis_mem_write_cmd, m_axis_mem_write_data);
+		memory->process_reads<DATA_WIDTH>(m_axis_mem_read_cmd, s_axis_mem_read_data);
+		count++;
+	}
+
 	//start packet processing
 	while (scan(inputFile, inWord))
 	{
@@ -416,31 +584,36 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile, std::ofstream& outputFil
 				regCrcDropPkgCount,
 				regInvalidPsnDropCount);
 	}
-	routedMemCmd local_write_cmd_packet;
-	routedMemCmd local_read_cmd_packet;
-	net_axis<DATA_WIDTH> 		local_read_data_packet;
-	routed_net_axis<DATA_WIDTH> local_write_data_packet;
-
-	//data.data = 108; //6C
-	local_write_data_packet.data = 0x0;
-	local_write_data_packet.keep = 0xff;
-	local_write_data_packet.last = true;
-
-	net_axis<DATA_WIDTH> local_read_data;
-	//data.data = 108; //6C
-	// local_read_data.data = 0x0;
-	// local_read_data.keep = 0xff;
-	// local_data.last = true;
-	int i,j,k = 1000;
-
+	while (scan(readResponseInputFile, inWord))
+	{
+		s_axis_data128.write(inWord);
+		convertStreamWidth<128, 27>(s_axis_data128, s_axis_rx_data);
+		rocev2<DATA_WIDTH>(s_axis_rx_data,
+				//m_axis_rx_data,
+				s_axis_tx_meta,
+				s_axis_tx_data,
+				m_axis_tx_data,
+				m_axis_mem_write_cmd,
+				m_axis_mem_read_cmd,
+				//s_axis_mem_write_status,
+				m_axis_mem_write_data,
+				s_axis_mem_read_data,
+				m_axis_local_write_cmd,
+				m_axis_local_read_cmd,
+				m_axis_local_write_data,
+				s_axis_local_read_data,
+				s_axis_qp_interface,
+				s_axis_qp_conn_interface,
+#if POINTER_CHASING_EN
+				m_axis_rx_pcmeta,
+				s_axis_tx_pcmeta,
+#endif
+				local_ip_address,
+				regCrcDropPkgCount,
+				regInvalidPsnDropCount);
+	}
 	while (count < 800000)
 	{
-	local_write_cmd_packet.data.addr = i;
-	local_write_cmd_packet.data.len = 4; //
-	local_read_cmd_packet.data.addr = j;
-	// local_read_data_packet;
-	// local_write_data_packet;
-
 		convertStreamWidth<128, 25>(s_axis_data128, s_axis_rx_data);
 		convertStreamWidth<DATA_WIDTH, 26>(m_axis_tx_data, m_axis_tx_data128);
 		rocev2<DATA_WIDTH>(	s_axis_rx_data,
@@ -478,16 +651,78 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile, std::ofstream& outputFil
 	}
 
 	net_axis<128> outWord;
+	int outputPacketCount = 0;
+	int outputWordInPacket = 0;
+	int readResponseWordCount = 0;
+	bool readRequestOpcodeSeen = false;
+	bool readResponseOpcodeSeen = false;
+	bool readResponsePayloadMatches = true;
+	bool readResponseFramingMatches = true;
 	//outputFile << "[DATA]" << std::endl;
 	while(!m_axis_tx_data128.empty())
 	{
 		m_axis_tx_data128.read(outWord);
 		print(outputFile, outWord);
 		outputFile << std::endl;
+		if (outputPacketCount == 0 && outputWordInPacket == 1 &&
+			outWord.data(103, 96) == RC_RDMA_READ_REQUEST)
+		{
+			readRequestOpcodeSeen = true;
+		}
+		if (outputPacketCount == 3)
+		{
+			readResponseWordCount++;
+			if (outWord.keep != 0xffff ||
+				outWord.last != (outputWordInPacket == 6))
+			{
+				readResponseFramingMatches = false;
+			}
+			if (outputWordInPacket == 1 && outWord.data(103, 96) == RC_RDMA_READ_RESP_ONLY)
+			{
+				readResponseOpcodeSeen = true;
+			}
+			for (int byte = 0; byte < 16; ++byte)
+			{
+				const int packetByte = outputWordInPacket * 16 + byte;
+				if (packetByte >= 44 && packetByte < 108)
+				{
+					const int payloadByte = packetByte - 44;
+					const ap_uint<8> expected = (payloadByte % 8 == 0)
+						? (0x24 + payloadByte) : 0;
+					if (outWord.data((byte * 8) + 7, byte * 8) != expected)
+					{
+						readResponsePayloadMatches = false;
+					}
+				}
+			}
+		}
+		outputWordInPacket++;
+		if (outWord.last)
+		{
+			outputPacketCount++;
+			outputWordInPacket = 0;
+		}
 	}
 
-	//TODO diff
-	return 0;
+	int failures = verify_default_dma_route() + memory->verify_routed_dma_path();
+	if (outputPacketCount != 4 || !readRequestOpcodeSeen)
+	{
+		std::cerr << "[FAILED] RoCE response packets=" << outputPacketCount
+				  << " read-request=" << readRequestOpcodeSeen
+				  << " (expected one read request, two ACKs, and one read response)"
+				  << std::endl;
+		failures++;
+	}
+	if (readResponseWordCount != 7 || !readResponseOpcodeSeen ||
+		!readResponsePayloadMatches || !readResponseFramingMatches)
+	{
+		std::cerr << "[FAILED] RDMA read response framing/payload mismatch: words="
+				  << readResponseWordCount << " opcode=" << readResponseOpcodeSeen
+				  << " payload=" << readResponsePayloadMatches
+				  << " framing=" << readResponseFramingMatches << std::endl;
+		failures++;
+	}
+	return failures == 0 ? 0 : 1;
 }
 
 
@@ -977,8 +1212,9 @@ int main(int argc, char* argv[])
 	std::ofstream rxOutputFile;
 	std::ifstream txInputFile;
 	std::ofstream txOutputFile;
+	std::ifstream readResponseInputFile;
 
-	if (argc < 3)
+	if (argc < 6)
 	{
 		std::cout << "[ERROR] missing arguments." << std::endl;
 		return -1;
@@ -1012,12 +1248,20 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
+	readResponseInputFile.open(argv[5]);
+	if (!readResponseInputFile)
+	{
+		std::cout << "[ERROR] could not open RDMA read response input file." << std::endl;
+		return -1;
+	}
+
 	int ret = 0;
 	// Test RX path
-	ret = test_rx(&dram, rxInputFile, rxOutputFile, rev_ip_address, rev_remote_ip_address);
+	ret = test_rx(&dram, rxInputFile, readResponseInputFile, rxOutputFile,
+			  rev_ip_address, rev_remote_ip_address);
 	//ret = get_network_input(&dram, rxInputFile, rxOutputFile);
 	//ret = test_rx_nak(&dram, rxInputFile, rxOutputFile, rev_ip_address, rev_remote_ip_address);
-	std::cout << "Test:\tRX path\t\t";
+	std::cout << "Test:\tRDMA DMA path\t";
 	if (ret == 0)
 	{
 		std::cout << "[PASSED]";
@@ -1028,29 +1272,5 @@ int main(int argc, char* argv[])
 	}
 	std::cout << std::endl << std::endl;
 
-	//ret = test_tx_host(&dram, txInputFile, txOutputFile, rev_ip_address, rev_remote_ip_address);
-	//ret = test_tx_latency(txInputFile, txOutputFile, rev_ip_address, rev_remote_ip_address);
-	//ret = test_tx_read(txInputFile, txOutputFile, rev_ip_address, rev_remote_ip_address);
-	// ret = test_tx_debug(txInputFile, txOutputFile, rev_ip_address, rev_remote_ip_address);
-	std::cout << "Test:\tTX path\t\t";
-	if (ret == 0)
-	{
-		std::cout << "[PASSED]";
-	}
-	else
-	{
-		std::cout << "[FAILED]";
-	}
-	std::cout << std::endl;
-
-
-	std::cout << "Endinaness test" << std::endl;
-	ap_uint<32> temp;
-	temp(3, 0) = 0xFF;
-	temp(31, 24) = 0x11;
-
-	std::cout << "lowest addr: " << std::hex  << (uint16_t)(reinterpret_cast<char*>(&temp))[0] << std::endl;
-	std::cout << "highest addr: " << std::hex << (uint16_t)(reinterpret_cast<char*>(&temp))[3] << std::endl;
-
-	return 0;
+	return ret;
 }

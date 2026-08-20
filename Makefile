@@ -164,7 +164,7 @@ installip-hls:
 # Requires a prior `make installip-hls` (or any csynth) so the RTL is present
 # in the krnl HLS project. Fails fast if the TB writes "Error:" to stdout, so
 # tests should print "Status: ..." messages instead.
-.PHONY: cosim cosim-krnl csim-krnl test-roce-setup
+.PHONY: cosim cosim-krnl csim-krnl test-roce-setup test-roce-completion test-roce-rdma
 cosim cosim-krnl:
 	mkdir -p build
 	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
@@ -182,6 +182,22 @@ test-roce-setup:
 		rocetest_krnl/src/hdl/roce_setup_control.sv \
 		rocetest_krnl/test/tb_roce_setup_control.sv
 	vvp build/tb_roce_setup_control
+
+test-roce-completion:
+	mkdir -p build
+	iverilog -g2012 -s tb_roce_completion_adapter \
+		-o build/tb_roce_completion_adapter \
+		rocetest_krnl/src/hdl/roce_completion_adapter.sv \
+		rocetest_krnl/test/tb_roce_completion_adapter.sv
+	vvp build/tb_roce_completion_adapter
+
+# Full source-controlled RDMA read regression: APP_READ -> network response ->
+# external DMA landing write, responder DMA, plus the RTL status bridge.
+# Requires Vitis/Vivado HLS and therefore runs on Wolverine, not this dev shell.
+test-roce-rdma: test-roce-completion
+	mkdir -p build
+	cd build && cmake .. -DIPREPO_DIR=$(IP_REPO) -DDATA_WIDTH=64
+	$(MAKE) -C build csim.rocev2
 
 # 2) rocetest_krnl RTL kernel — packaged via Vivado Tcl
 installip-rocetest:

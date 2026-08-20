@@ -388,12 +388,20 @@ assign s_axis_role_tx_meta_tready = s_axis_roce_role_tx_meta.ready;
 // m_axis_roce_role_tx_status is the one-shot QP-up signal from stack_top — drop it.
 assign m_axis_roce_role_tx_status.ready = 1'b1;
 
-// Per-op completion: tap axis_roce_write_status (8b status from DataMover, zero-extended to 32b)
-assign m_axis_op_completion_tvalid = axis_roce_write_status.valid;
-assign m_axis_op_completion_tdata  = { {(C_M_AXIS_OP_COMPLETION_TDATA_WIDTH-8){1'b0}}, axis_roce_write_status.data };
-assign m_axis_op_completion_tkeep  = {(C_M_AXIS_OP_COMPLETION_TDATA_WIDTH/8){1'b1}};
-assign m_axis_op_completion_tlast  = 1'b1;
-assign axis_roce_write_status.ready = m_axis_op_completion_tready;
+// Per-op completion: forward the DataMover S2MM status as one completion token.
+roce_completion_adapter #(
+  .STATUS_WIDTH     ( 8                                      ),
+  .COMPLETION_WIDTH ( C_M_AXIS_OP_COMPLETION_TDATA_WIDTH     )
+) inst_roce_completion_adapter (
+  .status_valid     ( axis_roce_write_status.valid           ),
+  .status_ready     ( axis_roce_write_status.ready           ),
+  .status_data      ( axis_roce_write_status.data            ),
+  .completion_valid ( m_axis_op_completion_tvalid            ),
+  .completion_ready ( m_axis_op_completion_tready            ),
+  .completion_data  ( m_axis_op_completion_tdata             ),
+  .completion_keep  ( m_axis_op_completion_tkeep             ),
+  .completion_last  ( m_axis_op_completion_tlast             )
+);
 
 // assign s_axis_qp_interface.valid = s_axis_qp_interface_tvalid;
 // assign s_axis_qp_interface.data = s_axis_qp_interface_tdata[159:0];
