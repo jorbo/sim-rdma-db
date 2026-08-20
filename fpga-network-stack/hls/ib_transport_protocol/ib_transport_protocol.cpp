@@ -1096,7 +1096,9 @@ void generate_exh(	stream<event>&			metaIn,
 				rdmaHeader.setLength(meta.length); //TODO Move up??
 				rdmaHeader.setRemoteKey(msnMeta.r_key);
 				ap_uint<8> remainingLength = rdmaHeader.consumeWord(sendWord.data);
-				sendWord.keep = ~0;
+				// RETH is 16 bytes. At wider datapaths, marking the entire beat valid
+				// appends garbage beyond the UDP/IP length and moves the ICRC.
+				sendWord.keep = lenToKeep(RETH_SIZE/8);
 				sendWord.last = (remainingLength == 0);
 				std::cout << "RDMA_WRITE_ONLY/FIRST ";
 				print(std::cout, sendWord);
@@ -1167,7 +1169,9 @@ void generate_exh(	stream<event>&			metaIn,
 				rdmaHeader.setLength(meta.length); //TODO Move up??
 				rdmaHeader.setRemoteKey(msnMeta.r_key);
 				ap_uint<8> remainingLength = rdmaHeader.consumeWord(sendWord.data);
-				sendWord.keep = ~0;
+				// A read request has only a 16-byte RETH and no payload. Preserve its
+				// exact byte count so the emitted frame matches the advertised length.
+				sendWord.keep = lenToKeep(RETH_SIZE/8);
 				sendWord.last = (remainingLength == 0);
 				std::cout << "RDMA_READ_RWQ ";
 				print(std::cout, sendWord);
