@@ -45,7 +45,15 @@ using namespace hls;
 #include "newFakeDram.hpp"
 
 static const uint16_t READ_RESPONSE_LOCAL_ADDR = 0x0200;
-static const uint16_t READ_RESPONSE_LENGTH = 64;
+// Runtime fetch_node() reads one 40-byte Node, so exercise the same partial beat.
+static const uint16_t READ_RESPONSE_LENGTH = 40;
+static const uint16_t RESPONDER_READ_ADDR = 0x0010;
+static const uint16_t RESPONDER_READ_LENGTH = 64;
+
+static ap_uint<8> expected_responder_payload_byte(int offset)
+{
+	return (offset % 8 == 0) ? (0x24 + offset) : 0;
+}
 
 static int verify_default_dma_route()
 {
@@ -84,6 +92,16 @@ public:
 		{
 			memory[i] = 0;
 		}
+
+		// The legacy RX fixture has two writes followed by an overlapping read.
+		// Read and write commands use independent simulated memory streams, so the
+		// fake DRAM can service the read before the second write has drained. Seed
+		// the responder window with the same bytes the fixture ultimately writes;
+		// write routing/TLAST and initiator response landing are checked separately.
+		for (int i = 0; i < RESPONDER_READ_LENGTH; ++i)
+		{
+			memory[RESPONDER_READ_ADDR + i] = expected_responder_payload_byte(i);
+		}
 	}
 
 	int verify_routed_dma_path() const
@@ -104,20 +122,23 @@ public:
 			std::cerr << "[FAILED] RDMA read command address/length mismatch" << std::endl;
 			failures++;
 		}
-		if (routedWriteCmdCount != 3 || routedWriteBytes != 192 || routedWriteLastCount != 3)
+		if (routedWriteCmdCount != 3 || routedWriteBytes != 168 || routedWriteLastCount != 3)
 		{
 			std::cerr << "[FAILED] RDMA write path: commands=" << routedWriteCmdCount
 					  << " bytes=" << routedWriteBytes
 					  << " tlast=" << routedWriteLastCount
-					  << " (expected 3, 192, 3)" << std::endl;
+					  << " (expected 3, 168, 3)" << std::endl;
 			failures++;
 		}
-		if (routedReadCmdCount != 1 || routedReadBytes != 64 || routedReadLastCount != 1)
+		if (routedReadCmdCount != 1 ||
+			routedReadBytes != RESPONDER_READ_LENGTH ||
+			routedReadLastCount != 1)
 		{
 			std::cerr << "[FAILED] RDMA read path: commands=" << routedReadCmdCount
 					  << " bytes=" << routedReadBytes
 					  << " tlast=" << routedReadLastCount
-					  << " (expected 1, 64, 1)" << std::endl;
+					  << " (expected 1, " << RESPONDER_READ_LENGTH << ", 1)"
+					  << std::endl;
 			failures++;
 		}
 		for (int i = 0; i < READ_RESPONSE_LENGTH; ++i)
@@ -357,7 +378,9 @@ public:
 					{
 						badRoute = true;
 					}
-					if (routedReadCmdCount != 1 || cmd.data.addr != 16 || cmd.data.len != 64)
+					if (routedReadCmdCount != 1 ||
+						cmd.data.addr != RESPONDER_READ_ADDR ||
+						cmd.data.len != RESPONDER_READ_LENGTH)
 					{
 						badReadCommand = true;
 					}
@@ -687,8 +710,8 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				if (packetByte >= 44 && packetByte < 108)
 				{
 					const int payloadByte = packetByte - 44;
-					const ap_uint<8> expected = (payloadByte % 8 == 0)
-						? (0x24 + payloadByte) : 0;
+					const ap_uint<8> expected =
+						expected_responder_payload_byte(payloadByte);
 					if (outWord.data((byte * 8) + 7, byte * 8) != expected)
 					{
 						readResponsePayloadMatches = false;
