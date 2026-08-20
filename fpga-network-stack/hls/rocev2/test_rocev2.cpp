@@ -45,6 +45,7 @@ using namespace hls;
 #include "newFakeDram.hpp"
 
 static const uint16_t READ_RESPONSE_LOCAL_ADDR = 0x0200;
+static const uint16_t SECOND_READ_RESPONSE_LOCAL_ADDR = 0x0300;
 // Runtime fetch_node() reads one 40-byte Node, so exercise the same partial beat.
 static const uint16_t READ_RESPONSE_LENGTH = 40;
 static const uint16_t RESPONDER_READ_ADDR = 0x0010;
@@ -104,6 +105,23 @@ public:
 		}
 	}
 
+	bool has_completed_routed_writes(int expected) const
+	{
+		return routedWriteCmdCount >= expected && routedWriteLastCount >= expected;
+	}
+
+	bool payload_matches(uint16_t address, uint8_t firstByte) const
+	{
+		for (int i = 0; i < READ_RESPONSE_LENGTH; ++i)
+		{
+			if (memory[address + i] != (firstByte + i))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	int verify_routed_dma_path() const
 	{
 		int failures = 0;
@@ -122,12 +140,12 @@ public:
 			std::cerr << "[FAILED] RDMA read command address/length mismatch" << std::endl;
 			failures++;
 		}
-		if (routedWriteCmdCount != 3 || routedWriteBytes != 168 || routedWriteLastCount != 3)
+		if (routedWriteCmdCount != 4 || routedWriteBytes != 208 || routedWriteLastCount != 4)
 		{
 			std::cerr << "[FAILED] RDMA write path: commands=" << routedWriteCmdCount
 					  << " bytes=" << routedWriteBytes
 					  << " tlast=" << routedWriteLastCount
-					  << " (expected 3, 168, 3)" << std::endl;
+					  << " (expected 4, 208, 4)" << std::endl;
 			failures++;
 		}
 		if (routedReadCmdCount != 1 ||
@@ -146,6 +164,16 @@ public:
 			if (memory[READ_RESPONSE_LOCAL_ADDR + i] != (0xa0 + i))
 			{
 				std::cerr << "[FAILED] RDMA read response payload mismatch at byte "
+						  << i << std::endl;
+				failures++;
+				break;
+			}
+		}
+		for (int i = 0; i < READ_RESPONSE_LENGTH; ++i)
+		{
+			if (memory[SECOND_READ_RESPONSE_LOCAL_ADDR + i] != (0xd0 + i))
+			{
+				std::cerr << "[FAILED] second RDMA read response payload mismatch at byte "
 						  << i << std::endl;
 				failures++;
 				break;
@@ -238,7 +266,10 @@ public:
 						(routedWriteCmdCount == 3 &&
 						 (cmd.data.addr != READ_RESPONSE_LOCAL_ADDR ||
 						  cmd.data.len != READ_RESPONSE_LENGTH)) ||
-						routedWriteCmdCount > 3)
+						(routedWriteCmdCount == 4 &&
+						 (cmd.data.addr != SECOND_READ_RESPONSE_LOCAL_ADDR ||
+						  cmd.data.len != READ_RESPONSE_LENGTH)) ||
+						routedWriteCmdCount > 4)
 					{
 						badWriteCommand = true;
 					}
@@ -454,6 +485,7 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 	stream<net_axis<DATA_WIDTH> >		s_axis_tx_data("s_axis_tx_data");
 	stream<net_axis<DATA_WIDTH> >		m_axis_tx_data("m_axis_tx_data");
 	stream<net_axis<128> >		m_axis_tx_data128("m_axis_tx_data128");
+	stream<net_axis<128> >		captured_tx_data128("captured_tx_data128");
 	//memory
 	stream<routedMemCmd>		m_axis_mem_write_cmd("m_axis_mem_write_cmd");
 	stream<routedMemCmd>		m_axis_mem_read_cmd("m_axis_mem_read_cmd");
@@ -607,6 +639,7 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				regCrcDropPkgCount,
 				regInvalidPsnDropCount);
 	}
+	bool firstReadResponseInjected = false;
 	while (scan(readResponseInputFile, inWord))
 	{
 		s_axis_data128.write(inWord);
@@ -634,11 +667,63 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				local_ip_address,
 				regCrcDropPkgCount,
 				regInvalidPsnDropCount);
+		if (inWord.last)
+		{
+			firstReadResponseInjected = true;
+			break;
+		}
 	}
+
+	bool secondReadIssued = false;
+	bool secondReadResponseInjected = false;
+	int firstReadLandingCycle = -1;
+	int emittedOutputPacketCount = 0;
 	while (count < 800000)
 	{
+		if (firstReadLandingCycle < 0 &&
+			memory->has_completed_routed_writes(3) &&
+			memory->payload_matches(READ_RESPONSE_LOCAL_ADDR, 0xa0))
+		{
+			firstReadLandingCycle = count;
+		}
+
+		// Mirror the runtime's single-in-flight ordering at the HLS DMA boundary:
+		// enqueue read #2 only after response #1 has landed and all four earlier
+		// output packets have been emitted.
+		if (!secondReadIssued && firstReadLandingCycle >= 0 &&
+			emittedOutputPacketCount >= 4)
+		{
+			s_axis_tx_meta.write(txMeta(APP_READ, 0x11,
+								 SECOND_READ_RESPONSE_LOCAL_ADDR, 0x2000,
+								 READ_RESPONSE_LENGTH));
+			secondReadIssued = true;
+		}
+
+		// Observing request #2's complete output packet confirms that its metadata
+		// was consumed and the landing-address queue push was issued before
+		// response #2 performs the matching queue pop.
+		if (secondReadIssued && !secondReadResponseInjected &&
+			emittedOutputPacketCount >= 5 &&
+			scan(readResponseInputFile, inWord))
+		{
+			s_axis_data128.write(inWord);
+			if (inWord.last)
+			{
+				secondReadResponseInjected = true;
+			}
+		}
+
 		convertStreamWidth<128, 25>(s_axis_data128, s_axis_rx_data);
 		convertStreamWidth<DATA_WIDTH, 26>(m_axis_tx_data, m_axis_tx_data128);
+		if (!m_axis_tx_data128.empty())
+		{
+			net_axis<128> capturedWord = m_axis_tx_data128.read();
+			captured_tx_data128.write(capturedWord);
+			if (capturedWord.last)
+			{
+				emittedOutputPacketCount++;
+			}
+		}
 		rocev2<DATA_WIDTH>(	s_axis_rx_data,
 				//m_axis_rx_data,
 				s_axis_tx_meta,
@@ -674,23 +759,73 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 	}
 
 	net_axis<128> outWord;
+	while (!m_axis_tx_data128.empty())
+	{
+		captured_tx_data128.write(m_axis_tx_data128.read());
+	}
 	int outputPacketCount = 0;
 	int outputWordInPacket = 0;
 	int readResponseWordCount = 0;
-	bool readRequestOpcodeSeen = false;
+	int readRequestCount = 0;
+	int ackCount = 0;
+	bool readRequestMetadataMatches = true;
+	bool readRequestFramingMatches = true;
 	bool readResponseOpcodeSeen = false;
 	bool readResponsePayloadMatches = true;
 	bool readResponseFramingMatches = true;
 	//outputFile << "[DATA]" << std::endl;
-	while(!m_axis_tx_data128.empty())
+	while(!captured_tx_data128.empty())
 	{
-		m_axis_tx_data128.read(outWord);
+		captured_tx_data128.read(outWord);
 		print(outputFile, outWord);
 		outputFile << std::endl;
-		if (outputPacketCount == 0 && outputWordInPacket == 1 &&
-			outWord.data(103, 96) == RC_RDMA_READ_REQUEST)
+		if (outputPacketCount == 0 || outputPacketCount == 4)
 		{
-			readRequestOpcodeSeen = true;
+			const bool finalRequestWord = (outputWordInPacket == 3);
+			if (outWord.keep != (finalRequestWord ? 0x0fff : 0xffff) ||
+				outWord.last != finalRequestWord)
+			{
+				readRequestFramingMatches = false;
+			}
+			if (outputWordInPacket == 1)
+			{
+				if (outWord.data(103, 96) == RC_RDMA_READ_REQUEST)
+				{
+					readRequestCount++;
+				}
+				else
+				{
+					readRequestMetadataMatches = false;
+				}
+			}
+			if (outputWordInPacket == 2)
+			{
+				const ap_uint<8> expectedPsnLow =
+					(outputPacketCount == 0) ? 0x5d : 0x5e;
+				const ap_uint<8> expectedRemoteAddrByte =
+					(outputPacketCount == 0) ? 0x10 : 0x20;
+				if (outWord.data(47, 40) != 0x9d ||
+					outWord.data(55, 48) != 0xbe ||
+					outWord.data(63, 56) != expectedPsnLow ||
+					outWord.data(23, 0) != 0 ||
+					outWord.data(31, 24) != 0x12 ||
+					outWord.data(111, 64) != 0 ||
+					outWord.data(119, 112) != expectedRemoteAddrByte ||
+					outWord.data(127, 120) != 0)
+				{
+					readRequestMetadataMatches = false;
+				}
+			}
+			if (outputWordInPacket == 3 &&
+				(outWord.data(55, 0) != 0 || outWord.data(63, 56) != 0x28))
+			{
+				readRequestMetadataMatches = false;
+			}
+		}
+		if ((outputPacketCount == 1 || outputPacketCount == 2) &&
+			outputWordInPacket == 1 && outWord.data(103, 96) == RC_ACK)
+		{
+			ackCount++;
 		}
 		if (outputPacketCount == 3)
 		{
@@ -728,11 +863,23 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 	}
 
 	int failures = verify_default_dma_route() + memory->verify_routed_dma_path();
-	if (outputPacketCount != 4 || !readRequestOpcodeSeen)
+	if (!firstReadResponseInjected || !secondReadIssued ||
+		!secondReadResponseInjected)
+	{
+		std::cerr << "[FAILED] sequential RDMA read phases: first-response="
+				  << firstReadResponseInjected << " second-request=" << secondReadIssued
+				  << " second-response=" << secondReadResponseInjected << std::endl;
+		failures++;
+	}
+	if (outputPacketCount != 5 || readRequestCount != 2 || ackCount != 2 ||
+		!readRequestMetadataMatches || !readRequestFramingMatches)
 	{
 		std::cerr << "[FAILED] RoCE response packets=" << outputPacketCount
-				  << " read-request=" << readRequestOpcodeSeen
-				  << " (expected one read request, two ACKs, and one read response)"
+				  << " read-requests=" << readRequestCount
+				  << " acks=" << ackCount
+				  << " metadata=" << readRequestMetadataMatches
+				  << " framing=" << readRequestFramingMatches
+				  << " (expected two sequential read requests, two ACKs, and one read response)"
 				  << std::endl;
 		failures++;
 	}
