@@ -8,6 +8,9 @@ extern "C" {
 };
 
 #define BOOTSTRAP_PORT 7890
+//! A failed/crashed peer must not turn the readiness check into another
+//! indefinite hardware-looking hang.
+#define ROCE_READY_TIMEOUT_SECONDS 120
 
 //! QPNs are host-assigned with this stack (the host writes the QP context
 //! into rocetest_krnl); a deterministic scheme keeps every node able to
@@ -63,4 +66,14 @@ RdmaConfig bootstrap_rdma(
     int                         local_qpn,
     uint64_t                    local_vaddr,
     bptr_t                      local_root
+);
+
+//! Reuse the still-open bootstrap connections to wait until every peer has
+//! completed configure_roce(). Returns false if this node or any peer reaches
+//! the barrier with setup unavailable. Throws if a peer does not reach or
+//! finish the barrier before the shared deadline.
+bool synchronize_roce_ready(
+    node_id_t                      my_id,
+    const std::vector<NodeConfig>& nodes,
+    bool                           local_ready
 );

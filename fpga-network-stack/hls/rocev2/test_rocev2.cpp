@@ -49,7 +49,20 @@ static const uint16_t SECOND_READ_RESPONSE_LOCAL_ADDR = 0x0300;
 // Runtime fetch_node() reads one 40-byte Node, so exercise the same partial beat.
 static const uint16_t READ_RESPONSE_LENGTH = 40;
 static const uint16_t RESPONDER_READ_ADDR = 0x0010;
-static const uint16_t RESPONDER_READ_LENGTH = 64;
+// The production B-tree responder also reads one 40-byte Node. Keep this
+// partial-beat case aligned with fetch_node() instead of testing a full beat.
+static const uint16_t RESPONDER_READ_LENGTH = 40;
+static const int RESPONDER_RESPONSE_FIXED_BYTES = 48; // IP + UDP + BTH + AETH + ICRC
+static const int RESPONDER_RESPONSE_BYTES =
+	RESPONDER_RESPONSE_FIXED_BYTES + RESPONDER_READ_LENGTH;
+static const int RESPONDER_RESPONSE_WORDS =
+	(RESPONDER_RESPONSE_BYTES + 15) / 16;
+static const int RESPONDER_RESPONSE_LAST_BYTES =
+	RESPONDER_RESPONSE_BYTES - ((RESPONDER_RESPONSE_WORDS - 1) * 16);
+static const uint16_t RESPONDER_RESPONSE_LAST_KEEP =
+	(RESPONDER_RESPONSE_LAST_BYTES == 16)
+		? 0xffff
+		: ((1u << RESPONDER_RESPONSE_LAST_BYTES) - 1u);
 
 static ap_uint<8> expected_responder_payload_byte(int offset)
 {
@@ -830,8 +843,13 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 		if (outputPacketCount == 3)
 		{
 			readResponseWordCount++;
-			if (outWord.keep != 0xffff ||
-				outWord.last != (outputWordInPacket == 6))
+			const bool finalResponseWord =
+				(outputWordInPacket == RESPONDER_RESPONSE_WORDS - 1);
+			const ap_uint<16> expectedKeep = finalResponseWord
+				? RESPONDER_RESPONSE_LAST_KEEP
+				: 0xffff;
+			if (outWord.keep != expectedKeep ||
+				outWord.last != finalResponseWord)
 			{
 				readResponseFramingMatches = false;
 			}
@@ -842,7 +860,8 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 			for (int byte = 0; byte < 16; ++byte)
 			{
 				const int packetByte = outputWordInPacket * 16 + byte;
-				if (packetByte >= 44 && packetByte < 108)
+				if (packetByte >= 44 &&
+					packetByte < 44 + RESPONDER_READ_LENGTH)
 				{
 					const int payloadByte = packetByte - 44;
 					const ap_uint<8> expected =
@@ -883,7 +902,7 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				  << std::endl;
 		failures++;
 	}
-	if (readResponseWordCount != 7 || !readResponseOpcodeSeen ||
+	if (readResponseWordCount != RESPONDER_RESPONSE_WORDS || !readResponseOpcodeSeen ||
 		!readResponsePayloadMatches || !readResponseFramingMatches)
 	{
 		std::cerr << "[FAILED] RDMA read response framing/payload mismatch: words="

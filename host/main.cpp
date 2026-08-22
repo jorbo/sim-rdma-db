@@ -24,6 +24,27 @@ static void print_rdma(const RdmaConfig& rdma, size_t n_nodes) {
 }
 
 
+static bool wait_for_roce_peers(
+	node_id_t my_id,
+	const std::vector<NodeConfig>& nodes,
+	bool local_ready
+) {
+	std::cout << "Waiting for peer RoCE setup..." << std::endl;
+	try {
+		if (!synchronize_roce_ready(my_id, nodes, local_ready)) {
+			std::cerr << "RoCE setup failed on this node or a peer" << std::endl;
+			return false;
+		}
+	}
+	catch (const std::exception& e) {
+		std::cerr << "RoCE readiness barrier failed: " << e.what() << std::endl;
+		return false;
+	}
+	std::cout << "All RoCE endpoints ready." << std::endl;
+	return true;
+}
+
+
 int main(int argc, char** argv) {
 	if (argc != 4) {
 		std::cout << "Usage: " << argv[0]
@@ -62,7 +83,11 @@ int main(int argc, char** argv) {
 		RdmaConfig rdma = bootstrap_rdma(my_id, nodes, qpn_for(my_id),
 		                                 dev.memory_vaddr, output.root);
 		print_rdma(rdma, nodes.size());
-		configure_roce(dev, rdma, nodes, my_id, dev.buffer_memory);
+		bool roce = configure_roce(dev, rdma, nodes, my_id,
+		                           dev.buffer_memory);
+		if (!wait_for_roce_peers(my_id, nodes, roce)) {
+			return EXIT_FAILURE;
+		}
 		std::cout << "Table node serving; Ctrl-C to exit." << std::endl;
 		for (;;) pause();
 	} else {
@@ -75,6 +100,11 @@ int main(int argc, char** argv) {
 		print_rdma(rdma, nodes.size());
 		bool roce = configure_roce(dev, rdma, nodes, my_id,
 		                           dev.buffer_rdma);
+		// Do not let either the optional probe or the B-tree search emit the
+		// first packet until every endpoint has finished programming its QP.
+		if (!wait_for_roce_peers(my_id, nodes, roce)) {
+			return EXIT_FAILURE;
+		}
 
 		// Bring-up step 3: host-driven RDMA READ of the table node's
 		// first node into local offset 0, no B-tree kernel involved.
