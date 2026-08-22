@@ -1243,7 +1243,7 @@ void rocev2_top(
 	#pragma HLS INTERFACE axis register port=s_axis_local_bram_write_cmd
 	#pragma HLS INTERFACE axis register port=s_axis_local_bram_read_cmd
 	#pragma HLS INTERFACE axis register port=s_axis_local_bram_write_data
-	#pragma HLS INTERFACE axis register port=m_axis_local_read_data
+	#pragma HLS INTERFACE axis register port=m_axis_local_bram_read_data
 
 	//CONTROL
 	#pragma HLS INTERFACE axis register port=s_axis_qp_interface

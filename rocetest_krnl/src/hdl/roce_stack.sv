@@ -78,6 +78,13 @@ if (ROCE_EN == 1) begin
 rocev2_ip rocev2_inst(
     .ap_clk(net_clk), // input aclk
     .ap_rst_n(net_aresetn), // input aresetn
+    // The local-BRAM cache client is unused in this design.  Its control
+    // inputs must be driven explicitly: CACHE() checks these ports before
+    // normal RoCE DMA commands, so an open TVALID can starve the live path.
+    .s_axis_local_bram_write_cmd_TVALID(1'b0),
+    .s_axis_local_bram_read_cmd_TVALID(1'b0),
+    .s_axis_local_bram_write_data_TVALID(1'b0),
+    .m_axis_local_bram_read_data_TREADY(1'b1),
     //RX
 //`ifdef IP_VERSION4
      //IPv4

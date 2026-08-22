@@ -322,7 +322,10 @@ mem_single_inf #(
 
 .m_axi_bready(m00_axi_bready),
 .m_axi_bid(),
-.m_axi_bresp(),
+// RESP is intentionally omitted from the RTL-kernel AXI boundary.  The
+// internal DataMover still consumes it, so provide the platform-default
+// OKAY response explicitly instead of leaving an input open.
+.m_axi_bresp(2'b00),
 .m_axi_bvalid(m00_axi_bvalid),
 
 .m_axi_arid(),
@@ -339,7 +342,7 @@ mem_single_inf #(
 .m_axi_rready(m00_axi_rready),
 .m_axi_rid(),
 .m_axi_rdata(m00_axi_rdata),
-.m_axi_rresp(),
+.m_axi_rresp(2'b00),
 .m_axi_rlast(m00_axi_rlast),
 .m_axi_rvalid(m00_axi_rvalid),
 

@@ -203,17 +203,21 @@ always @ (posedge user_clk) begin
     end
 end
 
-// ila_mem_inf inst_ila_mem_inf (
-//     .clk(mem_clk),
-//     .probe0(m_axi_wvalid), //
-//     .probe1(m_axi_wready),
-//     .probe2(m_axi_wlast), //
-//     .probe3(m_axi_awready),
-//     .probe4(m_axi_awvalid),
-//     .probe5(m_axi_bvalid),
-//     .probe6(m_axi_bready),
-//     .probe7(running)
-// );
+// The existing network ILAs stop at the RoCE/DataMover input.  Keep this
+// compact ILA at the landing-write boundary so hardware capture can distinguish
+// malformed write framing from a missing S2MM status/completion token.  The
+// current kernel wires user_clk and mem_clk to the same clock.
+ila_mem_inf inst_ila_mem_inf (
+    .clk(mem_clk),
+    .probe0(axis_to_dm_mem_write_cmd_tvalid_reg),
+    .probe1(axis_to_dm_mem_write_cmd_tready_reg),
+    .probe2(axis_mem_cc_to_dm_write_tvalid),
+    .probe3(axis_mem_cc_to_dm_write_tready),
+    .probe4(axis_mem_cc_to_dm_write_tlast),
+    .probe5(m_axis_mem_write_status.valid),
+    .probe6(m_axis_mem_write_status.ready),
+    .probe7(s2mm_error)
+);
 
 
 
