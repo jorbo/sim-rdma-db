@@ -18,7 +18,7 @@ void sm_search(
 	bptr_t const&  root,
 	node_id_t      local_id,
 	Node          *hbm,
-	int            qpn_table[MAX_KRNL_NODES],
+	int            local_qpn,
 	hls::stream<search_tagged_in_t>&  input,
 	hls::stream<search_tagged_out_t>& output,
 	hls::stream<pkt256>&              m_axis_tx_meta,

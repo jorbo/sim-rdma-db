@@ -24,13 +24,9 @@ void krnl(
 	bool          reset,
 	//! [in]    This FPGA's node_id within the distributed tree (0 = local root)
 	node_id_t     my_node_id,
-	//! [in]    QPN table: qpn_table[node_id] gives that node's Queue Pair
-	//!         Number. Outgoing metadata uses qpn_table[my_node_id] as the
-	//!         local connection-table key; the connection entry supplies the
-	//!         peer's packet-destination QPN.
-	//!         If your HLS tool does not support s_axilite arrays, change this
-	//!         to `int *qpn_table` with an m_axi bundle and copy it locally.
-	int           qpn_table[MAX_KRNL_NODES],
+	//! [in]    This node's QPN, used as the local connection-table lookup key.
+	//!         The connection entry supplies the peer's packet-destination QPN.
+	int           local_qpn,
 	//! [out]   RDMA metadata stream for outgoing READ/WRITE commands
 	hls::stream<pkt256>& m_axis_tx_meta,
 	//! [in]    Per-RDMA-op completion token stream from rocetest_krnl

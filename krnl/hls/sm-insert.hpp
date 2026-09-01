@@ -19,7 +19,7 @@ void sm_insert(
 	bptr_t&        root,
 	node_id_t      local_id,
 	Node          *hbm,
-	int            qpn_table[MAX_KRNL_NODES],
+	int            local_qpn,
 	hls::stream<insert_tagged_in_t>&  input,
 	hls::stream<insert_tagged_out_t>& output,
 	hls::stream<pkt256>&              m_axis_tx_meta,

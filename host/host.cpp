@@ -128,9 +128,9 @@ static void run_kernel(
 	cl_int err;
 	clock_t htod, dtoh, comp;
 
-	// Mutable local copy of qpn_table for OpenCL buffer mapping.
-	int qpn_table[MAX_KRNL_NODES];
-	memcpy(qpn_table, rdma.qpn_table, sizeof(qpn_table));
+	// The kernel only needs this node's connection-table lookup key. Passing
+	// it as a scalar avoids a separate AXI read before the first RDMA command.
+	const int local_qpn = rdma.qpn_table[rdma.my_node_id];
 
 	// BUFFERS (buffer_memory was created before bootstrap; see
 	// tree_device_setup)
@@ -146,10 +146,6 @@ static void run_kernel(
 					   context,
 					   CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
 					   sizeof(Response) * responses.size(), responses.data(), &err));
-	OCL_CHECK(err, cl::Buffer buffer_qpn_table(
-					   context,
-					   CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-					   sizeof(qpn_table), qpn_table, &err));
 	// KERNEL ARGS (must match krnl() parameter order)
 	int loop_max = 6 * (int)requests.size();
 	int op_max = static_cast<int>(requests.size());
@@ -161,7 +157,7 @@ static void run_kernel(
 	OCL_CHECK(err, err = krnl1.setArg(5, op_max));
 	OCL_CHECK(err, err = krnl1.setArg(6, true));
 	OCL_CHECK(err, err = krnl1.setArg(7, (uint8_t)rdma.my_node_id));
-	OCL_CHECK(err, err = krnl1.setArg(8, buffer_qpn_table));
+	OCL_CHECK(err, err = krnl1.setArg(8, local_qpn));
 	// Args 9/10 are the AXIS streams (m_axis_tx_meta, s_axis_completion):
 	// stream-connected in the xclbin, never set from the host.
 	OCL_CHECK(err, err = krnl1.setArg(11, buffer_resp_in));
@@ -170,7 +166,7 @@ static void run_kernel(
 	std::cout << "HOST -> DEVICE" << std::endl;
 	htod = clock();
 	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-					   {buffer_root, buffer_memory, buffer_requests, buffer_qpn_table},
+					   {buffer_root, buffer_memory, buffer_requests},
 					   FROM_HOST_FLAGS));
 	q.finish();
 	htod = clock() - htod;

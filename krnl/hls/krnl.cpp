@@ -14,7 +14,7 @@ void krnl(
 	int           op_max,
 	bool          reset,
 	node_id_t     my_node_id,
-	int           qpn_table[MAX_KRNL_NODES],
+	int           local_qpn,
 	hls::stream<pkt256>& m_axis_tx_meta,
 	hls::stream<pkt32>&  s_axis_completion,
 	Node        *resp_in
@@ -31,7 +31,7 @@ void krnl(
 	#pragma HLS INTERFACE s_axilite port=op_max
 	#pragma HLS INTERFACE s_axilite port=reset
 	#pragma HLS INTERFACE s_axilite port=my_node_id
-	#pragma HLS INTERFACE m_axi     port=qpn_table bundle=gmem4 depth=16 offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
+	#pragma HLS INTERFACE s_axilite port=local_qpn
 	#pragma HLS INTERFACE m_axi     port=resp_in   bundle=gmem5 depth=1  offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=1
 	#pragma HLS INTERFACE axis port=m_axis_tx_meta    depth=64
 	#pragma HLS INTERFACE axis port=s_axis_completion depth=64
@@ -73,8 +73,8 @@ void krnl(
 
 		sm_ramstream_req(requests, req_buffer, num_requests);
 		sm_decode(requests, searchInput, insertInput);
-		sm_search(root_for_search, my_node_id, hbm, qpn_table, searchInput, searchOutput, m_axis_tx_meta, s_axis_completion, resp_in);
-		sm_insert(root_for_insert, my_node_id, hbm, qpn_table, insertInput, insertOutput, m_axis_tx_meta, s_axis_completion, resp_in);
+		sm_search(root_for_search, my_node_id, hbm, local_qpn, searchInput, searchOutput, m_axis_tx_meta, s_axis_completion, resp_in);
+		sm_insert(root_for_insert, my_node_id, hbm, local_qpn, insertInput, insertOutput, m_axis_tx_meta, s_axis_completion, resp_in);
 		sm_encode(responses, searchOutput, insertOutput);
 		sm_ramstream_resp(responses, resp_buffer);
 	}

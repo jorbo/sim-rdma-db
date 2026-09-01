@@ -13,7 +13,7 @@ static Node fetch_node(
 	bptr_t       addr,
 	node_id_t    local_id,
 	Node        *hbm,
-	int          qpn_table[MAX_KRNL_NODES],
+	int          local_qpn,
 	hls::stream<pkt256>& tx_meta,
 	hls::stream<pkt32>&  completion,
 	Node        *resp_in
@@ -30,7 +30,7 @@ static Node fetch_node(
 	rdma_bram_read(
 		// Outgoing metadata carries the local connection-table lookup key.
 		// That entry supplies the peer's packet-destination QPN.
-		(ap_uint<24>)qpn_table[local_id],
+		(ap_uint<24>)local_qpn,
 		/*laddr=*/0,
 		raddr,
 		sizeof(Node),
@@ -51,7 +51,7 @@ static bstatusval_t search_one(
 	bptr_t root,
 	node_id_t local_id,
 	Node *hbm,
-	int qpn_table[MAX_KRNL_NODES],
+	int local_qpn,
 	hls::stream<pkt256>& tx_meta,
 	hls::stream<pkt32>&  completion,
 	Node *resp_in
@@ -61,7 +61,7 @@ static bstatusval_t search_one(
 
 	while (!is_leaf(ptr)) {
 		#pragma HLS loop_tripcount max=MAX_LEVELS
-		Node n = fetch_node(ptr, local_id, hbm, qpn_table, tx_meta, completion, resp_in);
+		Node n = fetch_node(ptr, local_id, hbm, local_qpn, tx_meta, completion, resp_in);
 		result = find_next(&n, key);
 		if (result.status != SUCCESS) {
 			return result;
@@ -69,7 +69,7 @@ static bstatusval_t search_one(
 		ptr = result.value.ptr;
 	}
 
-	Node leaf = fetch_node(ptr, local_id, hbm, qpn_table, tx_meta, completion, resp_in);
+	Node leaf = fetch_node(ptr, local_id, hbm, local_qpn, tx_meta, completion, resp_in);
 	return find_value(&leaf, key);
 }
 
@@ -78,7 +78,7 @@ void sm_search(
 	bptr_t const&  root,
 	node_id_t      local_id,
 	Node          *hbm,
-	int            qpn_table[MAX_KRNL_NODES],
+	int            local_qpn,
 	hls::stream<search_tagged_in_t>&  input,
 	hls::stream<search_tagged_out_t>& output,
 	hls::stream<pkt256>&              m_axis_tx_meta,
@@ -95,7 +95,7 @@ void sm_search(
 		out.val         = search_out_t();
 
 		if (in.has_payload) {
-			out.val = search_one(in.key, root, local_id, hbm, qpn_table,
+			out.val = search_one(in.key, root, local_id, hbm, local_qpn,
 			                     m_axis_tx_meta, s_axis_completion, resp_in);
 		}
 		output.write(out);
