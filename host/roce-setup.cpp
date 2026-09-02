@@ -31,10 +31,6 @@ enum RoceArg
 // long as both sides agree.
 #define RKEY_FIRST_LIGHT 0
 
-// Kept between configure_roce and roce_manual_read.
-static cl::Kernel roce_krnl;
-static bool roce_ready = false;
-
 // TODO(bring-up): confirm byte order against the stack's lIP/rIP
 // interpretation; first light assumes host byte order.
 static uint32_t ip_to_u32(const std::string &ip)
@@ -100,8 +96,8 @@ bool configure_roce(
 	OCL_CHECK(err, err = dev.q.enqueueTask(k));
 	dev.q.finish();
 
-	roce_krnl = k;
-	roce_ready = true;
+	dev.roce_krnl = k;
+	dev.roce_ready = true;
 	std::cout << "RoCE stack configured: lQPN=0x" << std::hex
 			  << qpn_for(my_id) << " rQPN=0x" << qpn_for(peer->id)
 			  << std::dec << " lIP=" << me->fpga_ip
@@ -117,16 +113,16 @@ bool roce_manual_read(
 {
 	cl_int err;
 
-	if (!roce_ready)
+	if (!dev.roce_ready)
 	{
 		std::cerr << "roce_manual_read before configure_roce" << std::endl;
 		return false;
 	}
-	OCL_CHECK(err, err = roce_krnl.setArg(ARG_OP, (uint32_t)ROCE_OP_READ));
-	OCL_CHECK(err, err = roce_krnl.setArg(ARG_RADDR, raddr));
-	OCL_CHECK(err, err = roce_krnl.setArg(ARG_LADDR, laddr));
-	OCL_CHECK(err, err = roce_krnl.setArg(ARG_LEN, len));
-	OCL_CHECK(err, err = dev.q.enqueueTask(roce_krnl));
+	OCL_CHECK(err, err = dev.roce_krnl.setArg(ARG_OP, (uint32_t)ROCE_OP_READ));
+	OCL_CHECK(err, err = dev.roce_krnl.setArg(ARG_RADDR, raddr));
+	OCL_CHECK(err, err = dev.roce_krnl.setArg(ARG_LADDR, laddr));
+	OCL_CHECK(err, err = dev.roce_krnl.setArg(ARG_LEN, len));
+	OCL_CHECK(err, err = dev.q.enqueueTask(dev.roce_krnl));
 	dev.q.finish();
 	return true;
 }

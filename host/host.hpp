@@ -15,6 +15,8 @@ struct TreeDevice {
 	cl::Device device;
 	cl::Program program; //!< kept so further kernels (rocetest) can be probed
 	cl::Kernel krnl;
+	cl::Kernel roce_krnl;
+	bool roce_ready = false;
 	cl::CommandQueue q;
 	//! Tree-node memory (HBM-resident, exposed to peers via RDMA reads)
 	cl::Buffer buffer_memory;
