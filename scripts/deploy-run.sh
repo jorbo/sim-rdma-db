@@ -13,6 +13,8 @@
 #   REMOTE_DIR     remote working directory (default: btree-run)
 #   RDMA_SELFTEST  1 (default) fires the host-driven RDMA READ on the
 #                  head node before the search workload; set 0 to skip
+#   RUN_TIMEOUT    seconds before the head node run is declared hung and
+#                  debug state is collected (default: 180; 0 disables)
 #
 # The host binary is copied, not rebuilt: both machines must run the
 # same XRT version as the build machine.
@@ -27,6 +29,7 @@ HEAD=${2:?usage: deploy-run.sh <table-user@host> <head-user@host> [nodes.cfg]}
 CFG=${3:-nodes.cfg}
 REMOTE_DIR=${REMOTE_DIR:-btree-run}
 SELFTEST=${RDMA_SELFTEST:-1}
+RUN_TIMEOUT=${RUN_TIMEOUT:-180}
 # Non-interactive ssh does not load the XRT environment; source it
 # explicitly in every remote run command.
 XRT_SETUP=${XRT_SETUP:-/opt/xilinx/xrt/setup.sh}
@@ -64,6 +67,26 @@ TABLE_PID=$(ssh "$TABLE" \
 	 < /dev/null > table.log 2>&1 & echo \$!")
 echo "table node pid $TABLE_PID; log: $REMOTE_DIR/table.log"
 
+# Snapshot device + kernel state from one node into a local log.
+# CU status distinguishes which kernel is wedged (krnl_1 stuck in START
+# means the B-tree kernel never returned; rocetest_krnl_1 should be idle
+# after configure_roce).  dmesg shows AXI firewall trips: a trip points
+# at a bad m_axi access (e.g. the pre-DATAFLOW root read), a clean
+# firewall with krnl_1 started points at the completion-stream wait.
+collect_debug() {
+	local node=$1 tag=$2 out="debug.$2.log"
+	echo "== Collecting debug state from $node -> $out =="
+	ssh "$node" ". $XRT_SETUP > /dev/null 2>&1 || true
+		echo '--- xbutil examine (device/CU status) ---'
+		xbutil examine -r dynamic-regions 2>&1 || xbutil examine 2>&1 || true
+		echo '--- dmesg tail (AXI firewall / XRT errors) ---'
+		dmesg 2>/dev/null | tail -40 || sudo -n dmesg 2>/dev/null | tail -40 || \
+			echo '(dmesg unavailable without sudo)'
+		echo '--- host log tail ---'
+		tail -20 $REMOTE_DIR/*.log 2>/dev/null || true" > "$out" 2>&1 || true
+	echo "   saved $out"
+}
+
 cleanup() {
 	echo "== Stopping table node =="
 	ssh "$TABLE" "kill $TABLE_PID 2>/dev/null || true"
@@ -72,14 +95,38 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST) =="
+TIMEOUT_CMD=""
+if [ "$RUN_TIMEOUT" -gt 0 ] 2>/dev/null; then
+	TIMEOUT_CMD="timeout --foreground $RUN_TIMEOUT"
+fi
+
+echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, timeout ${RUN_TIMEOUT}s) =="
 set +e
-ssh "$HEAD" \
+$TIMEOUT_CMD ssh "$HEAD" \
 	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
 	 RDMA_SELFTEST=$SELFTEST ./host_exe \
 	 krnl.server1.xclbin 1 $CFG_BASE" | tee head.log
 RC=${PIPESTATUS[0]}
 set -e
+
+if [ "$RC" -eq 124 ]; then
+	echo "== HEAD NODE HUNG (timeout after ${RUN_TIMEOUT}s) — collecting debug state =="
+	collect_debug "$HEAD" head
+	collect_debug "$TABLE" table
+	# The wedged CU survives the process; reset so the next run starts clean.
+	# Kill both host processes first — xbutil refuses to reset a device
+	# with an open context.
+	echo "== Killing hung host processes and resetting devices =="
+	ssh "$HEAD" "pkill -f 'host_exe krnl.server1.xclbin' 2>/dev/null || true"
+	ssh "$TABLE" "kill $TABLE_PID 2>/dev/null || true"
+	for h in "$HEAD" "$TABLE"; do
+		ssh "$h" ". $XRT_SETUP > /dev/null 2>&1 && xbutil reset --force 2>&1 || \
+			echo 'xbutil reset failed on $h — reset manually before next run'" || true
+	done
+elif [ "$RC" -ne 0 ]; then
+	collect_debug "$HEAD" head
+	collect_debug "$TABLE" table
+fi
 
 echo "== Head node exit code: $RC =="
 exit "$RC"
