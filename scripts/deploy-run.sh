@@ -11,8 +11,10 @@
 #
 # Environment:
 #   REMOTE_DIR     remote working directory (default: btree-run)
-#   RDMA_SELFTEST  1 (default) fires the host-driven RDMA READ on the
-#                  head node before the search workload; set 0 to skip
+#   RDMA_SELFTEST  0 (default). The host-driven manual READ is currently a
+#                  no-op: stack_top's setup FSM ignores ARG_OP/rAddr/lAddr,
+#                  so the probe issues nothing and prints stale landing
+#                  bytes. Leave 0 until the manual-op path is restored.
 #   RUN_TIMEOUT    seconds before the head node run is declared hung and
 #                  debug state is collected (default: 180; 0 disables)
 #
@@ -28,7 +30,7 @@ TABLE=${1:?usage: deploy-run.sh <table-user@host> <head-user@host> [nodes.cfg]}
 HEAD=${2:?usage: deploy-run.sh <table-user@host> <head-user@host> [nodes.cfg]}
 CFG=${3:-nodes.cfg}
 REMOTE_DIR=${REMOTE_DIR:-btree-run}
-SELFTEST=${RDMA_SELFTEST:-1}
+SELFTEST=${RDMA_SELFTEST:-0}
 RUN_TIMEOUT=${RUN_TIMEOUT:-180}
 # Non-interactive ssh does not load the XRT environment; source it
 # explicitly in every remote run command.
