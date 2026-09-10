@@ -63,14 +63,14 @@ scp host_exe "$CFG" "$HEAD:$REMOTE_DIR/"
 scp "$BD1" "$HEAD:$REMOTE_DIR/krnl.server1.xclbin"
 
 echo "== Starting table node on $TABLE (background) =="
-# All fds of the backgrounded job must be redirected, and the redirects
-# must cover the whole command list: otherwise the job keeps the ssh
-# channel open and this command substitution blocks until it exits.
-# bash -c, not sh -c: XRT's setup.sh rejects dash ("Unsupported shell").
-TABLE_PID=$(ssh "$TABLE" \
-	"cd $REMOTE_DIR && nohup bash -c \
-	 '. $XRT_SETUP; exec ./host_exe krnl.server0.xclbin 0 $CFG_BASE' \
-	 < /dev/null > table.log 2>&1 & echo \$!")
+# The '&' must bind to a single command with ALL fds redirected. If it
+# backgrounds a '&&' list, the wrapping subshell keeps the ssh channel's
+# stdout open and this command substitution blocks for the lifetime of
+# host_exe. bash -c, not sh -c: XRT's setup.sh rejects dash.
+TABLE_PID=$(ssh "$TABLE" "cd $REMOTE_DIR || exit 1
+nohup bash -c '. $XRT_SETUP; exec ./host_exe krnl.server0.xclbin 0 $CFG_BASE' \
+	< /dev/null > table.log 2>&1 &
+echo \$!")
 echo "table node pid $TABLE_PID; log: $REMOTE_DIR/table.log"
 
 # Fail fast if the table node died on startup (bad env, missing libs,
