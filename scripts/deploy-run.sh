@@ -103,23 +103,24 @@ collect_debug() {
 	echo "   saved $out"
 }
 
+# Kill any host_exe on both nodes. Runs on every exit path (normal,
+# error, timeout, interrupt), so no route leaves a process holding a
+# device.
 cleanup() {
-	echo "== Stopping table node =="
-	ssh "$TABLE" "kill $TABLE_PID 2>/dev/null || true"
+	echo "== Stopping host_exe on both nodes =="
+	ssh "$TABLE" "kill $TABLE_PID 2>/dev/null; pkill -f 'host_exe krnl' 2>/dev/null; true" || true
+	ssh "$HEAD"  "pkill -f 'host_exe krnl' 2>/dev/null; true" || true
 	echo "== Table node log =="
 	ssh "$TABLE" "cat $REMOTE_DIR/table.log" || true
 }
 trap cleanup EXIT
 
-# Ctrl-C kills the local ssh but leaves the remote host_exe processes
-# running (no tty, so no HUP reaches them). Kill both explicitly, then
-# let the EXIT trap do the log dump.
+# Ignore further Ctrl-C while the handler's ssh kills run — a second
+# interrupt must not abort the cleanup — then exit through the EXIT trap.
 on_interrupt() {
-	trap - INT TERM
+	trap '' INT TERM
 	echo ""
-	echo "== Interrupted — killing host_exe on both nodes =="
-	ssh "$HEAD"  "pkill -f 'host_exe krnl.server1.xclbin' 2>/dev/null || true" || true
-	ssh "$TABLE" "pkill -f 'host_exe krnl.server0.xclbin' 2>/dev/null || true" || true
+	echo "== Interrupted — cleaning up =="
 	exit 130
 }
 trap on_interrupt INT TERM
