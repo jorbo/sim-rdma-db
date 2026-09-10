@@ -100,6 +100,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Ctrl-C kills the local ssh but leaves the remote host_exe processes
+# running (no tty, so no HUP reaches them). Kill both explicitly, then
+# let the EXIT trap do the log dump.
+on_interrupt() {
+	trap - INT TERM
+	echo ""
+	echo "== Interrupted — killing host_exe on both nodes =="
+	ssh "$HEAD"  "pkill -f 'host_exe krnl.server1.xclbin' 2>/dev/null || true" || true
+	ssh "$TABLE" "pkill -f 'host_exe krnl.server0.xclbin' 2>/dev/null || true" || true
+	exit 130
+}
+trap on_interrupt INT TERM
+
 TIMEOUT_CMD=""
 if [ "$RUN_TIMEOUT" -gt 0 ] 2>/dev/null; then
 	TIMEOUT_CMD="timeout --foreground $RUN_TIMEOUT"
