@@ -66,11 +66,22 @@ echo "== Starting table node on $TABLE (background) =="
 # All fds of the backgrounded job must be redirected, and the redirects
 # must cover the whole command list: otherwise the job keeps the ssh
 # channel open and this command substitution blocks until it exits.
+# bash -c, not sh -c: XRT's setup.sh rejects dash ("Unsupported shell").
 TABLE_PID=$(ssh "$TABLE" \
-	"cd $REMOTE_DIR && nohup sh -c \
+	"cd $REMOTE_DIR && nohup bash -c \
 	 '. $XRT_SETUP; exec ./host_exe krnl.server0.xclbin 0 $CFG_BASE' \
 	 < /dev/null > table.log 2>&1 & echo \$!")
 echo "table node pid $TABLE_PID; log: $REMOTE_DIR/table.log"
+
+# Fail fast if the table node died on startup (bad env, missing libs,
+# xclbin load failure) instead of letting the head block in bootstrap
+# until the timeout.
+sleep 3
+if ! ssh "$TABLE" "kill -0 $TABLE_PID 2>/dev/null"; then
+	echo "ERROR: table node exited immediately; log follows:" >&2
+	ssh "$TABLE" "cat $REMOTE_DIR/table.log" >&2 || true
+	exit 1
+fi
 
 # Snapshot device + kernel state from one node into a local log.
 # CU status distinguishes which kernel is wedged (krnl_1 stuck in START
