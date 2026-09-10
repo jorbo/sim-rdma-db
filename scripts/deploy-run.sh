@@ -61,9 +61,12 @@ scp host_exe "$CFG" "$HEAD:$REMOTE_DIR/"
 scp "$BD1" "$HEAD:$REMOTE_DIR/krnl.server1.xclbin"
 
 echo "== Starting table node on $TABLE (background) =="
+# All fds of the backgrounded job must be redirected, and the redirects
+# must cover the whole command list: otherwise the job keeps the ssh
+# channel open and this command substitution blocks until it exits.
 TABLE_PID=$(ssh "$TABLE" \
-	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
-	 nohup ./host_exe krnl.server0.xclbin 0 $CFG_BASE \
+	"cd $REMOTE_DIR && nohup sh -c \
+	 '. $XRT_SETUP; exec ./host_exe krnl.server0.xclbin 0 $CFG_BASE' \
 	 < /dev/null > table.log 2>&1 & echo \$!")
 echo "table node pid $TABLE_PID; log: $REMOTE_DIR/table.log"
 
