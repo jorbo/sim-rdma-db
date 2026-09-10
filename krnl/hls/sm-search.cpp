@@ -37,12 +37,16 @@ static Node fetch_node(
 		tx_meta
 	);
 
-	// Block on the per-op completion token. The status byte itself is unused;
-	// the handshake is what synchronizes us with the HBM landing pad write.
-	(void)completion.read();
-
-	// Read the freshly-DMAed Node from slot 0.
-	return resp_in[0];
+	// Block on the per-op completion token, then read the freshly-DMAed
+	// Node. The token must feed the read's address: with a plain
+	// `resp_in[0]` there is no data dependence on the stream read, so the
+	// scheduler hoists the AXI load above it and every fetch returns the
+	// PREVIOUS response (observed on hardware as searches resolving in the
+	// parent node). The DataMover command tag is 0 (mem_single_inf.sv), so
+	// bit 0 of the status byte is always 0 and the index is always slot 0 —
+	// but the scheduler cannot prove that, which is the point.
+	pkt32 tok = completion.read();
+	return resp_in[tok.data & 0x1];
 }
 
 
