@@ -104,7 +104,22 @@ foreach ila $ilas {
         catch {wait_on_hw_ila -timeout 1 $ila}
     }
 
-    set data [upload_hw_ila_data $ila]
+    set uploaded [upload_hw_ila_data $ila]
+    set data_objects [get_hw_ila_datas -quiet -of_objects $ila]
+    if {[llength $data_objects] == 0} {
+        puts "ERROR: upload returned '$uploaded' but no data object is associated with $ila"
+        set rc 4
+        continue
+    }
+    set data [lindex $data_objects end]
+    set ila_name [get_property NAME $ila]
+    set data_ila [get_property HW_ILA $data]
+    if {$data_ila ne $ila_name} {
+        puts "ERROR: selected data object $data belongs to $data_ila, not $ila_name"
+        set rc 4
+        continue
+    }
+    puts "Uploading $data from $data_ila (upload returned: $uploaded)"
     write_hw_ila_data -force "${out}.${tag}.ila" $data
     write_hw_ila_data -force -csv_file "${out}.${tag}.csv" $data
     puts "Wrote ${out}.${tag}.ila and .csv"
