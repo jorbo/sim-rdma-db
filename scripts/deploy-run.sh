@@ -15,6 +15,10 @@
 #                  no-op: stack_top's setup FSM ignores ARG_OP/rAddr/lAddr,
 #                  so the probe issues nothing and prints stale landing
 #                  bytes. Leave 0 until the manual-op path is restored.
+#   ILA_ARMING     0 (default). Set to 1 to pause the head after both RoCE
+#                  endpoints are ready. Arm the ILA, then press Enter in this
+#                  terminal to start the head workload. RUN_TIMEOUT includes
+#                  time spent waiting at this prompt.
 #   RUN_TIMEOUT    seconds before the head node run is declared hung and
 #                  debug state is collected (default: 180; 0 disables)
 #
@@ -31,6 +35,7 @@ HEAD=${2:?usage: deploy-run.sh <table-user@host> <head-user@host> [nodes.cfg]}
 CFG=${3:-nodes.cfg}
 REMOTE_DIR=${REMOTE_DIR:-btree-run}
 SELFTEST=${RDMA_SELFTEST:-0}
+ILA_ARMING=${ILA_ARMING:-0}
 RUN_TIMEOUT=${RUN_TIMEOUT:-180}
 # Non-interactive ssh does not load the XRT environment; source it
 # explicitly in every remote run command.
@@ -130,11 +135,11 @@ if [ "$RUN_TIMEOUT" -gt 0 ] 2>/dev/null; then
 	TIMEOUT_CMD="timeout --foreground $RUN_TIMEOUT"
 fi
 
-echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, timeout ${RUN_TIMEOUT}s) =="
+echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, ILA_ARMING=$ILA_ARMING, timeout ${RUN_TIMEOUT}s) =="
 set +e
 $TIMEOUT_CMD ssh "$HEAD" \
 	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
-	 RDMA_SELFTEST=$SELFTEST ./host_exe \
+	 RDMA_SELFTEST=$SELFTEST ILA_ARMING=$ILA_ARMING ./host_exe \
 	 krnl.server1.xclbin 1 $CFG_BASE" | tee head.log
 RC=${PIPESTATUS[0]}
 set -e

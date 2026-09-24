@@ -106,6 +106,20 @@ int main(int argc, char** argv) {
 			return EXIT_FAILURE;
 		}
 
+		const char* ila_arming = getenv("ILA_ARMING");
+		if (ila_arming != nullptr && std::strcmp(ila_arming, "1") == 0) {
+			std::cout << "ILA_ARMING=1: arm the ILA, then press ENTER to "
+			             "start the head workload..." << std::flush;
+			std::string line;
+			if (!std::getline(std::cin, line)) {
+				std::cerr << std::endl
+				          << "ILA arming input closed; aborting without starting "
+				             "the workload" << std::endl;
+				return EXIT_FAILURE;
+			}
+			std::cout << "ILA armed; starting head workload." << std::endl;
+		}
+
 		// Bring-up step 3: host-driven RDMA READ of the table node's
 		// first node into local offset 0, no B-tree kernel involved.
 		// Run with RDMA_SELFTEST=1 and inspect the landing bytes.
