@@ -10,7 +10,10 @@ void rdma_read(
 // #pragma HLS dataflow
 #pragma HLS inline off
 #pragma HLS pipeline II = 1
-	pkt256 tx_meta;
+	pkt256 tx_meta = {};
+	tx_meta.keep = 0x000fffff;
+	tx_meta.strb = 0x000fffff;
+	tx_meta.last = 1;
 
 	/*RDMA OP*/
 	tx_meta.data.range(2, 0) = 0x00000000;
@@ -39,7 +42,10 @@ void rdma_write(
 #pragma HLS inline off
 #pragma HLS pipeline II = 1
 
-	pkt256 tx_meta;
+	pkt256 tx_meta = {};
+	tx_meta.keep = 0x000fffff;
+	tx_meta.strb = 0x000fffff;
+	tx_meta.last = 1;
 	pkt64 tx_data;
 
 	/*RDMA OP*/
@@ -84,7 +90,10 @@ void rdma_write_through(
 #pragma HLS INTERFACE axis port = m_axis_tx_meta
 #pragma HLS INTERFACE axis port = m_axis_tx_data
 
-	pkt256 tx_meta;
+	pkt256 tx_meta = {};
+	tx_meta.keep = 0x000fffff;
+	tx_meta.strb = 0x000fffff;
+	tx_meta.last = 1;
 	pkt64 tx_data;
 
 	/*RDMA OP*/
@@ -125,7 +134,10 @@ void rdma_bram_read(
 // #pragma HLS dataflow
 #pragma HLS inline off
 #pragma HLS pipeline II = 1
-	pkt256 tx_meta;
+	pkt256 tx_meta = {};
+	tx_meta.keep = 0x000fffff;
+	tx_meta.strb = 0x000fffff;
+	tx_meta.last = 1;
 
 	/*RDMA OP*/
 	tx_meta.data.range(2, 0) = 0x00000000;
@@ -158,7 +170,10 @@ void rdma_bram_write(
 #pragma HLS INTERFACE axis port = m_axis_tx_meta
 #pragma HLS INTERFACE axis port = m_axis_tx_data
 
-	pkt256 tx_meta;
+	pkt256 tx_meta = {};
+	tx_meta.keep = 0x000fffff;
+	tx_meta.strb = 0x000fffff;
+	tx_meta.last = 1;
 	pkt64 tx_data;
 
 	/*RDMA OP*/
