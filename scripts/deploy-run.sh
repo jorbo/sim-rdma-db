@@ -11,6 +11,7 @@
 #
 # Environment:
 #   REMOTE_DIR     remote working directory (default: btree-run)
+#   XRT_INI        runtime configuration copied to each node (default: xrt.ini)
 #   RDMA_SELFTEST  0 (default). The host-driven manual READ is currently a
 #                  no-op: stack_top's setup FSM ignores ARG_OP/rAddr/lAddr,
 #                  so the probe issues nothing and prints stale landing
@@ -40,13 +41,14 @@ RUN_TIMEOUT=${RUN_TIMEOUT:-180}
 # Non-interactive ssh does not load the XRT environment; source it
 # explicitly in every remote run command.
 XRT_SETUP=${XRT_SETUP:-/opt/xilinx/xrt/setup.sh}
+XRT_INI=${XRT_INI:-xrt.ini}
 
 XSA=xilinx_u280_gen3x16_xdma_1_202211_1
 BD0=build_dir.hw.$XSA.server0/krnl.xclbin
 BD1=build_dir.hw.$XSA.server1/krnl.xclbin
 CFG_BASE=$(basename "$CFG")
 
-for f in host_exe "$BD0" "$BD1" "$CFG"; do
+for f in host_exe "$BD0" "$BD1" "$CFG" "$XRT_INI"; do
 	[ -f "$f" ] || { echo "ERROR: missing $f" >&2; exit 1; }
 done
 # Head node needs a third fpga_ip column to program the RoCE stack.
@@ -63,8 +65,10 @@ for h in "$TABLE" "$HEAD"; do
 	}
 done
 scp host_exe "$CFG" "$TABLE:$REMOTE_DIR/"
+scp "$XRT_INI" "$TABLE:$REMOTE_DIR/xrt.ini"
 scp "$BD0" "$TABLE:$REMOTE_DIR/krnl.server0.xclbin"
 scp host_exe "$CFG" "$HEAD:$REMOTE_DIR/"
+scp "$XRT_INI" "$HEAD:$REMOTE_DIR/xrt.ini"
 scp "$BD1" "$HEAD:$REMOTE_DIR/krnl.server1.xclbin"
 
 echo "== Starting table node on $TABLE (background) =="
@@ -73,7 +77,7 @@ echo "== Starting table node on $TABLE (background) =="
 # stdout open and this command substitution blocks for the lifetime of
 # host_exe. bash -c, not sh -c: XRT's setup.sh rejects dash.
 TABLE_PID=$(ssh "$TABLE" "cd $REMOTE_DIR || exit 1
-nohup bash -c '. $XRT_SETUP; exec ./host_exe krnl.server0.xclbin 0 $CFG_BASE' \
+nohup bash -c '. $XRT_SETUP; exec env XRT_INI_PATH=./xrt.ini ./host_exe krnl.server0.xclbin 0 $CFG_BASE' \
 	< /dev/null > table.log 2>&1 &
 echo \$!")
 echo "table node pid $TABLE_PID; log: $REMOTE_DIR/table.log"
@@ -139,7 +143,7 @@ echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, ILA_ARMING=$ILA_AR
 set +e
 $TIMEOUT_CMD ssh "$HEAD" \
 	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
-	 RDMA_SELFTEST=$SELFTEST ILA_ARMING=$ILA_ARMING ./host_exe \
+	 XRT_INI_PATH=./xrt.ini RDMA_SELFTEST=$SELFTEST ILA_ARMING=$ILA_ARMING ./host_exe \
 	 krnl.server1.xclbin 1 $CFG_BASE" | tee head.log
 RC=${PIPESTATUS[0]}
 set -e
