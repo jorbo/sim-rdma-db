@@ -101,14 +101,28 @@ fi
 collect_debug() {
 	local node=$1 tag=$2 out="debug.$2.log"
 	echo "== Collecting debug state from $node -> $out =="
+	# xbutil 2023.2 needs an explicit --device; pick the first user BDF.
+	# dmesg is usually root-only on these hosts; try both paths and say so
+	# when neither works instead of printing an empty section.
 	ssh "$node" ". $XRT_SETUP > /dev/null 2>&1 || true
-		echo '--- xbutil examine (device/CU status) ---'
-		xbutil examine -r dynamic-regions 2>&1 || xbutil examine 2>&1 || true
+		bdf=\$(xbutil examine 2>/dev/null | sed -n 's/^\\[\\([0-9a-fA-F:.]*\\)\\].*/\\1/p' | head -1)
+		echo \"--- xbutil examine -r dynamic-regions (CU status) device=\${bdf:-?} ---\"
+		if [ -n \"\$bdf\" ]; then
+			xbutil examine -d \"\$bdf\" -r dynamic-regions 2>&1 || true
+			echo '--- xbutil examine -r debug-ip-status ---'
+			xbutil examine -d \"\$bdf\" -r debug-ip-status 2>&1 || true
+		else
+			echo 'no user BDF found in xbutil examine output'
+		fi
 		echo '--- dmesg tail (AXI firewall / XRT errors) ---'
-		dmesg 2>/dev/null | tail -40 || sudo -n dmesg 2>/dev/null | tail -40 || \
-			echo '(dmesg unavailable without sudo)'
-		echo '--- host log tail ---'
-		tail -20 $REMOTE_DIR/*.log 2>/dev/null || true" > "$out" 2>&1 || true
+		if dmesg > /dev/null 2>&1; then dmesg | tail -40;
+		elif sudo -n dmesg > /dev/null 2>&1; then sudo -n dmesg | tail -40;
+		else echo '(dmesg unavailable: not root and no passwordless sudo)'; fi
+		echo '--- xrt-kds.log tail ---'
+		tail -60 $REMOTE_DIR/xrt-kds.log 2>/dev/null || echo '(no xrt-kds.log in $REMOTE_DIR)'
+		echo '--- other *.log tails ---'
+		for f in $REMOTE_DIR/*.log; do [ \"\$f\" = $REMOTE_DIR/xrt-kds.log ] && continue; echo \"# \$f\"; tail -20 \"\$f\"; done 2>/dev/null || true" \
+		> "$out" 2>&1 || true
 	echo "   saved $out"
 }
 
