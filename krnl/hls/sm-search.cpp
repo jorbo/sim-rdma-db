@@ -79,7 +79,7 @@ static bstatusval_t search_one(
 
 
 void sm_search(
-	bptr_t const&  root,
+	bptr_t         root,
 	node_id_t      local_id,
 	Node          *hbm,
 	int            local_qpn,

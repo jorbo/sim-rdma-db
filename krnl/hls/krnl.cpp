@@ -41,9 +41,11 @@ void krnl(
 	// into a local before the DATAFLOW region so the static does not leak
 	// into the dataflow processes (which would break HLS DATAFLOW rules).
 	static bptr_t persistent_root = bptr_make(0, 0);
+	bptr_t invocation_root = persistent_root;
 	if (reset) {
-		persistent_root = *root;
+		invocation_root = *root;
 	}
+	persistent_root = invocation_root;
 	// Bound the number of requests by the caller-supplied op_max (clamped to
 	// NUM_REQUESTS). sm_ramstream_req stops early at the first NOP regardless.
 	int num_requests = op_max;
@@ -52,8 +54,8 @@ void krnl(
 	}
 	(void)loop_max; // No longer needed: DATAFLOW self-terminates on `last`.
 
-	bptr_t root_for_search = persistent_root;
-	bptr_t root_for_insert = persistent_root;
+	bptr_t root_for_search = invocation_root;
+	bptr_t root_for_insert = invocation_root;
 
 	// --- canonical DATAFLOW block ---
 	{
@@ -74,7 +76,7 @@ void krnl(
 		sm_ramstream_req(requests, req_buffer, num_requests);
 		sm_decode(requests, searchInput, insertInput);
 		sm_search(root_for_search, my_node_id, hbm, local_qpn, searchInput, searchOutput, m_axis_tx_meta, s_axis_completion, resp_in);
-		sm_insert(root_for_insert, my_node_id, hbm, local_qpn, insertInput, insertOutput, m_axis_tx_meta, s_axis_completion, resp_in);
+		sm_insert(root_for_insert, my_node_id, hbm, insertInput, insertOutput);
 		sm_encode(responses, searchOutput, insertOutput);
 		sm_ramstream_resp(responses, resp_buffer);
 	}

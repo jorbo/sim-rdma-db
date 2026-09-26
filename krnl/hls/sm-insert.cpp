@@ -7,18 +7,9 @@ void sm_insert(
 	bptr_t&        root,
 	node_id_t      local_id,
 	Node          *hbm,
-	int            local_qpn,
 	hls::stream<insert_tagged_in_t>&  input,
-	hls::stream<insert_tagged_out_t>& output,
-	hls::stream<pkt256>&              m_axis_tx_meta,
-	hls::stream<pkt32>&               s_axis_completion,
-	Node                             *resp_in
+	hls::stream<insert_tagged_out_t>& output
 ) {
-	(void)local_qpn;
-	(void)m_axis_tx_meta;
-	(void)s_axis_completion;
-	(void)resp_in;
-
 	insert_loop: for (;;) {
 		#pragma HLS loop_tripcount max=NUM_REQUESTS
 		insert_tagged_in_t in = input.read();

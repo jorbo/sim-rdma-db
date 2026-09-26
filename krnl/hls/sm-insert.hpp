@@ -5,7 +5,6 @@
 #include "../core/node.h"
 #ifdef HLS
 #include <hls_stream.h>
-#include "rdma.hpp"
 #include "ramstream.hpp"
 
 
@@ -19,12 +18,8 @@ void sm_insert(
 	bptr_t&        root,
 	node_id_t      local_id,
 	Node          *hbm,
-	int            local_qpn,
 	hls::stream<insert_tagged_in_t>&  input,
-	hls::stream<insert_tagged_out_t>& output,
-	hls::stream<pkt256>&              m_axis_tx_meta,
-	hls::stream<pkt32>&               s_axis_completion,
-	Node                             *resp_in
+	hls::stream<insert_tagged_out_t>& output
 );
 #endif
 

@@ -15,7 +15,7 @@
 //! observed, emitting a tagged output for each (filler in → filler out) to
 //! keep the pipeline in lockstep.
 void sm_search(
-	bptr_t const&  root,
+	bptr_t         root,
 	node_id_t      local_id,
 	Node          *hbm,
 	int            local_qpn,
