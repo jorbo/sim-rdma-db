@@ -1,6 +1,6 @@
 #include "sm-search.hpp"
 #include "../core/node.h"
-#include <ap_utils.h>
+#include "etc/ap_utils.h"
 
 
 //! @brief Fetch a Node from local HBM (if owned by us) or from a remote FPGA
