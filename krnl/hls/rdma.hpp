@@ -66,6 +66,37 @@ void rdma_write_through(
 	hls::stream<pkt64>& m_axis_tx_data
 );
 
+//! @brief Build the tx_meta beat for a one-sided RDMA read of a BRAM/HBM
+//!        landing pad, without writing it to a stream.
+//!
+//! Exposed so a caller that must sequence the write against a blocking
+//! read on another stream (see fetch_node in sm-search.cpp) can issue the
+//! write itself inside a PROTOCOL region. rdma_bram_read() uses the same
+//! builder, so the two paths cannot drift apart.
+inline pkt256 rdma_bram_read_meta(
+	int s_axi_lqpn,
+	ap_uint<64> s_axi_laddr,
+	ap_uint<64> s_axi_raddr,
+	int s_axi_len)
+{
+#pragma HLS inline
+	pkt256 tx_meta = {};
+	tx_meta.keep = 0x000fffff;
+	tx_meta.strb = 0x000fffff;
+	tx_meta.last = 1;
+	/*RDMA OP*/
+	tx_meta.data.range(2, 0) = 0x00000000;
+	/*lQPN*/
+	tx_meta.data.range(26, 3) = s_axi_lqpn;
+	/*lAddr*/
+	tx_meta.data.range(74, 27) = s_axi_laddr;
+	/*rAddr*/
+	tx_meta.data.range(122, 75) = s_axi_raddr;
+	/*len*/
+	tx_meta.data.range(154, 123) = s_axi_len;
+	return tx_meta;
+}
+
 void rdma_bram_read(
 	//! Local Queue Pair Number
 	int s_axi_lqpn,

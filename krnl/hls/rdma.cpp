@@ -134,25 +134,8 @@ void rdma_bram_read(
 // #pragma HLS dataflow
 #pragma HLS inline off
 #pragma HLS pipeline II = 1
-	pkt256 tx_meta = {};
-	tx_meta.keep = 0x000fffff;
-	tx_meta.strb = 0x000fffff;
-	tx_meta.last = 1;
-
-	/*RDMA OP*/
-	tx_meta.data.range(2, 0) = 0x00000000;
-	/*lQPN*/
-	tx_meta.data.range(26, 3) = s_axi_lqpn;
-	/*
-	lAddr
-	*/
-	tx_meta.data.range(74, 27) = s_axi_laddr;
-	/*rAddr*/
-	tx_meta.data.range(122, 75) = s_axi_raddr;
-	//+(itt*4)
-	/*len*/
-	tx_meta.data.range(154, 123) = s_axi_len;
-	m_axis_tx_meta.write(tx_meta);
+	m_axis_tx_meta.write(
+		rdma_bram_read_meta(s_axi_lqpn, s_axi_laddr, s_axi_raddr, s_axi_len));
 }
 
 void rdma_bram_write(
