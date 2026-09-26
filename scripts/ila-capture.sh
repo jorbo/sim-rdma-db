@@ -18,6 +18,10 @@
 #                     trigger: arm on --pattern, then run the workload.
 #   --pattern <glob>  probe name glob for trigger mode, matched against the
 #                     names dumped in *.probes.txt (e.g. '*tx_meta*valid*')
+#   --and-pattern <glob> additionally require this probe to equal --and-hex;
+#                     the primary --pattern probe is matched high in that cycle
+#   --and-hex <hex>    exact hexadecimal value for --and-pattern
+#   --trigger-position <n> capture samples before the trigger (default: 512)
 #   --out <prefix>    output file prefix (default: ila.<timestamp>)
 #   --vivado <bin>    vivado_lab or vivado binary (default: autodetect)
 #
@@ -31,7 +35,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TCL=$SCRIPT_DIR/ila-capture.tcl
 
-ltx="" host="" mode=snapshot pattern="" out="ila.$(date +%Y%m%d-%H%M%S)" vivado=""
+ltx="" host="" mode=snapshot pattern="" and_pattern="" and_hex=""
+trigger_position=512 out="ila.$(date +%Y%m%d-%H%M%S)" vivado=""
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -39,6 +44,9 @@ while [[ $# -gt 0 ]]; do
 		--host)    host=$2; shift 2 ;;
 		--mode)    mode=$2; shift 2 ;;
 		--pattern) pattern=$2; shift 2 ;;
+		--and-pattern) and_pattern=$2; shift 2 ;;
+		--and-hex) and_hex=$2; shift 2 ;;
+		--trigger-position) trigger_position=$2; shift 2 ;;
 		--out)     out=$2; shift 2 ;;
 		--vivado)  vivado=$2; shift 2 ;;
 		-h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -53,6 +61,22 @@ if [[ "$mode" == trigger && -z "$pattern" ]]; then
 	echo "ERROR: trigger mode needs --pattern (run snapshot first; pick a name from *.probes.txt)" >&2
 	exit 2
 fi
+if [[ -n "$and_pattern" || -n "$and_hex" ]]; then
+	[[ "$mode" == trigger && -n "$and_pattern" && -n "$and_hex" ]] || {
+		echo "ERROR: --and-pattern and --and-hex must be used together in trigger mode" >&2
+		exit 2
+	}
+	and_hex=${and_hex#0x}
+	and_hex=${and_hex#0X}
+	[[ "$and_hex" =~ ^[0-9a-fA-F]+$ ]] || {
+		echo "ERROR: --and-hex must be a hexadecimal value" >&2
+		exit 2
+	}
+fi
+[[ "$trigger_position" =~ ^[0-9]+$ ]] || {
+	echo "ERROR: --trigger-position must be a non-negative integer" >&2
+	exit 2
+}
 
 find_vivado='
 	for v in vivado_lab vivado; do
@@ -76,7 +100,8 @@ run_capture() {
 		sleep 2
 	}
 	"$viv" -mode batch -nolog -nojournal -source ila-capture.tcl \
-		-tclargs "$l" "$o" "$mode" "$pattern"
+		-tclargs "$l" "$o" "$mode" "$pattern" "$and_pattern" "$and_hex" \
+		"$trigger_position"
 }
 
 if [[ -z "$host" ]]; then
@@ -108,7 +133,8 @@ else
 			sleep 2
 		}
 		\"\$viv\" -mode batch -nolog -nojournal -source ila-capture.tcl \
-			-tclargs probes.ltx '$out' '$mode' '$pattern'"
+			-tclargs probes.ltx '$out' '$mode' '$pattern' '$and_pattern' \
+			'$and_hex' '$trigger_position'"
 	echo "== Copying results back =="
 	scp "$host:$rdir/${out}.*" .
 	echo "== Results: ${out}.* =="

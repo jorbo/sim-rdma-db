@@ -4,7 +4,8 @@
 # with hw_server already running:
 #
 #   vivado_lab -mode batch -source ila-capture.tcl \
-#       -tclargs <probes.ltx> <out_prefix> [snapshot|trigger] [probe_glob]
+#       -tclargs <probes.ltx> <out_prefix> [snapshot|trigger] [probe_glob] \
+#       [and_probe_glob] [and_hex] [trigger_position]
 #
 # Modes:
 #   snapshot (default)  trigger immediately; use post-hang to read the
@@ -20,8 +21,14 @@ set ltx      [lindex $argv 0]
 set out      [lindex $argv 1]
 set mode     "snapshot"
 set probe_pat ""
+set and_probe_pat ""
+set and_hex ""
+set trigger_position 512
 if {[llength $argv] > 2} { set mode      [lindex $argv 2] }
 if {[llength $argv] > 3} { set probe_pat [lindex $argv 3] }
+if {[llength $argv] > 4} { set and_probe_pat [lindex $argv 4] }
+if {[llength $argv] > 5} { set and_hex [lindex $argv 5] }
+if {[llength $argv] > 6} { set trigger_position [lindex $argv 6] }
 
 if {$ltx eq "" || $out eq ""} {
     puts "ERROR: usage: -tclargs <probes.ltx> <out_prefix> \[snapshot|trigger\] \[probe_glob\]"
@@ -88,9 +95,24 @@ foreach ila $ilas {
             set rc 3
             continue
         }
-        puts "Arming $ila on rising edge of [get_property NAME $tp]"
-        set_property CONTROL.TRIGGER_POSITION 512 $ila
-        set_property TRIGGER_COMPARE_VALUE eq1'bR $tp
+        reset_hw_ila $ila
+        set_property CONTROL.TRIGGER_POSITION $trigger_position $ila
+        if {$and_probe_pat ne ""} {
+            set ap [lindex [get_hw_probes -quiet ${and_probe_pat} -of_objects $ila] 0]
+            if {$ap eq ""} {
+                puts "WARNING: no probe matches '$and_probe_pat' on $ila — skipping (see probes.txt)"
+                set rc 3
+                continue
+            }
+            set width [get_property WIDTH $ap]
+            set_property CONTROL.TRIGGER_CONDITION AND $ila
+            set_property TRIGGER_COMPARE_VALUE "eq1'b1" $tp
+            set_property TRIGGER_COMPARE_VALUE "eq${width}'h${and_hex}" $ap
+            puts "Arming $ila when [get_property NAME $tp] is high AND [get_property NAME $ap] == 0x$and_hex"
+        } else {
+            set_property TRIGGER_COMPARE_VALUE "eq1'bR" $tp
+            puts "Arming $ila on rising edge of [get_property NAME $tp]"
+        }
         run_hw_ila $ila
         # wait_on_hw_ila timeout is in minutes.
         if {[catch {wait_on_hw_ila -timeout 5 $ila} err]} {
