@@ -26,7 +26,7 @@ reg [2:0] state;
 assign completion_ready = (state == OP_WAIT_COMPLETION);
 always @(posedge clk) begin
     if (!resetn) begin
-        op_state <= OP_IDLE;
+        state <= OP_IDLE;
         meta_valid <= 0;
         busy <= 0;
         error <= 0;
