@@ -23,7 +23,7 @@ localparam [2:0] OP_IDLE = 3'd0;
 localparam [2:0] OP_META = 3'd1;
 localparam [2:0] OP_WAIT_COMPLETION = 3'd2;
 reg [2:0] op_state;
-assign completion_ready = (state == OP_WAIT_COMPLETION);
+assign completion_ready = (op_state == OP_WAIT_COMPLETION);
 always @(posedge clk) begin
     if (!resetn) begin
         op_state <= OP_IDLE;
