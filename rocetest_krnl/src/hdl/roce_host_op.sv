@@ -22,8 +22,8 @@ module roce_host_op (
 localparam [2:0] OP_IDLE = 3'd0;
 localparam [2:0] OP_META = 3'd1;
 localparam [2:0] OP_WAIT_COMPLETION = 3'd2;
-reg [2:0] op_state;
-assign completion_ready = (op_state == OP_WAIT_COMPLETION);
+reg [2:0] state;
+assign completion_ready = (state == OP_WAIT_COMPLETION);
 always @(posedge clk) begin
     if (!resetn) begin
         op_state <= OP_IDLE;
@@ -35,7 +35,7 @@ always @(posedge clk) begin
     else begin
         done <= 1'b0;
 
-        case (op_state)
+        case (state)
             OP_IDLE:
                 if (start) begin
                     if(!configured || OP != 32'd0) begin
