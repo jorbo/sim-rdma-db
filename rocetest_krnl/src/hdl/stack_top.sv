@@ -82,8 +82,14 @@ module stack_top #(
     input  wire [64-1:0]                         rAddr            ,
     input  wire [64-1:0]                         lAddr            ,
     input  wire [32-1:0]                         len              ,
-    input  wire [32-1:0]                         debug            
-    
+    input  wire [32-1:0]                         debug            ,
+
+    // Host-issued RDMA op (roce_host_op): completion token steering.
+    // rocetest_krnl routes the DataMover status pulse here instead of to the
+    // B-tree kernel while hostop_busy is high.
+    output wire                                  hostop_busy             ,
+    input  wire                                  hostop_completion_valid ,
+    output wire                                  hostop_completion_ready
  );
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -129,6 +135,17 @@ wire[55:0]  axis_arp_lookup_reply_TDATA;
 axis_meta #(.WIDTH(144))  axis_qp_interface();
 axis_meta #(.WIDTH(184))  axis_qp_conn_interface();
 axis_meta #(.WIDTH(144))  axis_roce_qp_interface();
+
+// tx_meta into the RoCE stack: kernel (S01) and host op (S00) merged.
+axis_meta #(.WIDTH(160))  axis_host_tx_metadata();
+axis_meta #(.WIDTH(160))  axis_tx_metadata();
+
+// ap_start dispatch: OP == NONE (0xFFFFFFFF) runs QP/conn/ARP setup,
+// anything else is a host-issued RDMA op on the already-configured QP.
+wire        op_is_none = (OP == 32'hFFFFFFFF);
+wire        hostop_done;
+wire        hostop_error;
+reg         qp_configured;
 
 wire        axis_host_arp_lookup_reply_TVALID;
 wire        axis_host_arp_lookup_reply_TREADY;
@@ -227,8 +244,14 @@ end
 
 assign ap_idle = ap_idle_r;
 
-// Setup completion is a one-cycle pulse from the handshake-driven controller.
-assign ap_done = setup_done;
+// Both controllers complete with a one-cycle pulse; only one runs per ap_start.
+assign ap_done = setup_done | hostop_done;
+
+// Remember that setup has run so a host op cannot be issued on a dead QP.
+always @(posedge net_clk) begin
+    if (!net_aresetn)    qp_configured <= 1'b0;
+    else if (setup_done) qp_configured <= 1'b1;
+end
 
 // Ready Logic (non-pipelined case)
 assign ap_ready = ap_done;
@@ -334,7 +357,7 @@ wire         setup_arp_reply_ready;
 roce_setup_control setup_control_inst (
     .clk               (net_clk),
     .resetn            (net_aresetn),
-    .start             (ap_start_pulse),
+    .start             (ap_start_pulse & op_is_none),
     .rPSN              (rPSN),
     .lPSN              (lPSN),
     .rQPN              (rQPN),
@@ -366,6 +389,31 @@ assign axis_arp_lookup.data         = setup_arp_request_data;
 assign axis_arp_lookup.valid        = setup_arp_request_valid;
 assign axis_host_arp_lookup_reply_TREADY = setup_arp_reply_ready;
 
+/*
+ * Host-issued RDMA op (RDMA_SELFTEST / roce_manual_read): one tx_meta beat
+ * from the OP/rAddr/lAddr/len registers, done after the completion token.
+ * Same beat layout as the kernel's rdma_bram_read_meta().
+ */
+roce_host_op host_op_inst (
+    .clk              (net_clk),
+    .resetn           (net_aresetn),
+    .start            (ap_start_pulse & ~op_is_none),
+    .configured       (qp_configured),
+    .OP               (OP),
+    .lQPN             (lQPN),
+    .len              (len),
+    .rAddr            (rAddr),
+    .lAddr            (lAddr),
+    .meta_data        (axis_host_tx_metadata.data),
+    .meta_valid       (axis_host_tx_metadata.valid),
+    .meta_ready       (axis_host_tx_metadata.ready),
+    .completion_valid (hostop_completion_valid),
+    .completion_ready (hostop_completion_ready),
+    .busy             (hostop_busy),
+    .done             (hostop_done),
+    .error            (hostop_error)
+);
+
 // Preserve the existing one-shot "stack up" indication for its sink.
 assign m_axis_roce_role_tx_status.data  = 64'h1111111111111111;
 assign m_axis_roce_role_tx_status.keep  = 8'hff;
@@ -389,7 +437,7 @@ roce_stack #(
     //RX
     .s_axis_rx_data(axis_roce_slice_to_roce),
     //TX
-    .s_axis_tx_meta(s_axis_roce_role_tx_meta),
+    .s_axis_tx_meta(axis_tx_metadata),
     .s_axis_tx_data(s_axis_roce_role_tx_data), 
 
 `ifndef ENABLE_DROP 
@@ -633,7 +681,6 @@ assign axis_iph_to_toe_slice.ready = 1'b1;
 // not used for now
 //assign m_axis_roce_role_tx_status.ready = 1'b0;
 
-/*
 axis_interconnect_merger_160 tx_metadata_merger (
   .ACLK(net_clk),                                  // input wire ACLK
   .ARESETN(net_aresetn),                            // input wire ARESETN
@@ -655,7 +702,6 @@ axis_interconnect_merger_160 tx_metadata_merger (
   .S00_ARB_REQ_SUPPRESS(1'b0),  // input wire S00_ARB_REQ_SUPPRESS
   .S01_ARB_REQ_SUPPRESS(1'b0)  // input wire S01_ARB_REQ_SUPPRESS
 );
-*/
 
 /* MERGER FOR QP STATE 
 

@@ -170,6 +170,16 @@ axis_mem_status axis_roce_read_status();
 axis_mem_status axis_roce_write_status();
 assign axis_roce_read_status.ready = 1'b1;
 // axis_roce_write_status is routed out via m_axis_op_completion (per-op completion)
+// when the B-tree kernel owns the landing pad, or back into stack_top's host-op
+// controller while a host-issued RDMA op is in flight (see demux below).
+wire                                          op_completion_valid;
+wire                                          op_completion_ready;
+wire [C_M_AXIS_OP_COMPLETION_TDATA_WIDTH-1:0] op_completion_data;
+wire [C_M_AXIS_OP_COMPLETION_TDATA_WIDTH/8-1:0] op_completion_keep;
+wire                                          op_completion_last;
+wire                                          hostop_busy;
+wire                                          hostop_completion_valid;
+wire                                          hostop_completion_ready;
 
 
 // Register and invert reset signal.
@@ -274,7 +284,11 @@ stack_top #(
     .rAddr                  ( rAddr                  ),
     .lAddr                  ( lAddr                  ),
     .len                    ( len                    ),
-    .debug                  ( debug                  )
+    .debug                  ( debug                  ),
+    // Host-issued RDMA op: completion token steering
+    .hostop_busy              ( hostop_busy              ),
+    .hostop_completion_valid  ( hostop_completion_valid  ),
+    .hostop_completion_ready  ( hostop_completion_ready  )
 );
 
 // TODO: mem interface
@@ -399,12 +413,26 @@ roce_completion_adapter #(
   .status_valid     ( axis_roce_write_status.valid           ),
   .status_ready     ( axis_roce_write_status.ready           ),
   .status_data      ( axis_roce_write_status.data            ),
-  .completion_valid ( m_axis_op_completion_tvalid            ),
-  .completion_ready ( m_axis_op_completion_tready            ),
-  .completion_data  ( m_axis_op_completion_tdata             ),
-  .completion_keep  ( m_axis_op_completion_tkeep             ),
-  .completion_last  ( m_axis_op_completion_tlast             )
+  .completion_valid ( op_completion_valid                    ),
+  .completion_ready ( op_completion_ready                    ),
+  .completion_data  ( op_completion_data                     ),
+  .completion_keep  ( op_completion_keep                     ),
+  .completion_last  ( op_completion_last                     )
 );
+
+// Completion demux. A host-issued READ (roce_manual_read) lands through the
+// same DataMover and produces the same status pulse as a kernel fetch. If
+// that token reached krnl_1's s_axis_completion it would sit there and be
+// consumed by the kernel's first fetch of the next run, returning stale
+// landing-pad data. While the host op is in flight the token goes back to
+// roce_host_op instead, which also makes the CU's ap_done mean "bytes landed".
+assign m_axis_op_completion_tvalid = op_completion_valid & ~hostop_busy;
+assign hostop_completion_valid     = op_completion_valid &  hostop_busy;
+assign op_completion_ready         = hostop_busy ? hostop_completion_ready
+                                                 : m_axis_op_completion_tready;
+assign m_axis_op_completion_tdata  = op_completion_data;
+assign m_axis_op_completion_tkeep  = op_completion_keep;
+assign m_axis_op_completion_tlast  = op_completion_last;
 
 // assign s_axis_qp_interface.valid = s_axis_qp_interface_tvalid;
 // assign s_axis_qp_interface.data = s_axis_qp_interface_tdata[159:0];
