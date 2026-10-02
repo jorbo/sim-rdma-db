@@ -2,6 +2,7 @@
 #include "bootstrap.hpp"
 #include "myopencl.hpp"
 #include "device.hpp"
+#include 
 extern "C"
 {
 #include "../krnl/core/node.h"
@@ -91,7 +92,7 @@ TreeDevice tree_device_setup(std::string const &binaryFile, TreeInput &input)
 
 	setup_ocl(binaryFile, dev.context, dev.device, dev.program, dev.krnl,
 			  dev.q);
-	dev.rdma_landing.resize(1);
+	dev.rdma_landing.resize(RDMA_LANDING_SLOTS);
 	OCL_CHECK(err, dev.buffer_memory = cl::Buffer(
 					   dev.context,
 					   CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,

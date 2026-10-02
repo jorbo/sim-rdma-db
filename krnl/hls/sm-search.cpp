@@ -34,17 +34,7 @@ static Node fetch_node(
 	pkt256 meta = rdma_bram_read_meta(
 		(ap_uint<24>)local_qpn, slot * sizeof(Node), raddr, sizeof(Node));
 
-	// Emit the RDMA-read request, THEN block on the per-op completion token.
-	//
-	// The order matters and HLS will not keep it on its own: the write and
-	// the read touch different streams with no data dependence, so the
-	// scheduler is free to place the blocking read in the same FSM state as
-	// the write (observed in search_one.verbose.sched.rpt, ST_5). A blocked
-	// state holds every op in it, including the write, so the kernel waits
-	// for a completion to a request it never sent: krnl_1 sits in START,
-	// tx_meta never asserts TVALID. Cosim cannot catch it because the TB
-	// pre-stages the token. The PROTOCOL region keeps program order and
-	// ap_wait() forces a cycle boundary between the two.
+
 	pkt32 tok;
 	{
 #pragma HLS protocol fixed
@@ -53,13 +43,6 @@ static Node fetch_node(
 		tok = completion.read();
 	}
 
-	// The token must feed the read's address: with a plain `resp_in[0]`
-	// there is no data dependence on the stream read, so the scheduler
-	// hoists the AXI load above it and every fetch returns the PREVIOUS
-	// response (observed on hardware as searches resolving in the parent
-	// node). The DataMover command tag is 0 (mem_single_inf.sv), so bit 0
-	// of the status byte is always 0 and the index is always slot 0 -- but
-	// the scheduler cannot prove that, which is the point.
 	slot = (slot + 1 == RDMA_LANDING_SLOTS) ? ap_uint<4>(0) : ap_uint<4>(slot + 1);
 	ap_uint<4> landed = (tok.data(3, 0) * 13) & 0xF;
 	return resp_in[landed];
@@ -81,7 +64,7 @@ static bstatusval_t search_one(
 
 	while (!is_leaf(ptr))
 	{
-#pragma HLS loop_tripcount max = MAX_LEVELS
+#pragma HLS loop_tripcount max=MAX_LEVELS
 // HLS auto-pipelines this loop (II=77 at HEAD). A PROTOCOL region
 // is not allowed inside a pipelined loop, and a remote fetch is a
 // round trip anyway, so pipelining buys nothing here.
@@ -110,17 +93,18 @@ void sm_search(
 	hls::stream<pkt32> &s_axis_completion,
 	Node *resp_in)
 {
+	ap_uint<4> slot = 0;
 search_loop:
 	for (;;)
 	{
-#pragma HLS loop_tripcount max = NUM_REQUESTS
+#pragma HLS loop_tripcount max=NUM_REQUESTS
 		search_tagged_in_t in = input.read();
 
 		search_tagged_out_t out;
 		out.last = in.last;
 		out.has_payload = in.has_payload;
 		out.val = search_out_t();
-		ap_uint<4> slot = 0;
+		
 
 		if (in.has_payload)
 		{
