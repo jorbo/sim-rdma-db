@@ -94,10 +94,15 @@ void sm_search(
 			}
 			admitted++;
 		}
-
+		bool prefer_issue = false;    
+		
 		event_loop: while (remaining != 0) {
 			#pragma HLS pipeline off
-			if (!s_axis_completion.empty() && !pending.empty()) {
+			
+			const bool can_retire = !s_axis_completion.empty() && !pending.empty();
+			const bool can_issue  = !work.empty() && !free_slots.empty();
+
+			if (can_retire && !(can_issue && prefer_issue)){
 				pkt32     tok = s_axis_completion.read();
 				pending_t p   = pending.read();
 				ap_uint<4> landed = (tok.data(3, 0) * 13) & 0xF;   // inverse of 5*slot mod 16
@@ -109,8 +114,9 @@ void sm_search(
 				if (advance(p.sid, n, win_in[p.sid].key, cur_ptr, win_out, work)) {
 					remaining--;
 				}
+				prefer_issue = true;
 			}
-			else if (!work.empty() && !free_slots.empty()) {
+			else if (can_issue) {
 				work_t w = work.read();
 				if (bptr_node_id(w.ptr) == local_id) {
 					Node n = hbm[bptr_local_addr(w.ptr)];           // local: no RDMA, no slot
@@ -126,6 +132,7 @@ void sm_search(
 					pending.write(p);
 				}
 			}
+			prefer_issue = false;
 		}
 
 		
