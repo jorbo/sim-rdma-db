@@ -1,5 +1,6 @@
 #include "host.hpp"
 #include <chrono>
+#include <cstdlib>
 #include "bootstrap.hpp"
 #include "myopencl.hpp"
 #include "device.hpp"
@@ -180,6 +181,29 @@ static void run_kernel(
 					   FROM_HOST_FLAGS));
 	q.finish();
 	htod_ms = ms_since(t0);
+
+	// Optional: measure XRT launch + completion overhead with an empty run.
+	// A request buffer holding one NOP makes sm_ramstream_req stop at once
+	// and the dataflow drains in a few hundred cycles, so this wall time is
+	// almost entirely XRT. Subtract it from "Computation" for kernel time.
+	if (getenv("LAUNCH_PROBE") != nullptr) {
+		std::vector<Request, aligned_allocator<Request>> nop(1);
+		nop[0].opcode = NOP;
+		OCL_CHECK(err, cl::Buffer buffer_nop(
+					   context,
+					   CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
+					   sizeof(Request), nop.data(), &err));
+		OCL_CHECK(err, err = krnl1.setArg(2, buffer_nop));
+		OCL_CHECK(err, err = krnl1.setArg(5, 1));
+		OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_nop}, FROM_HOST_FLAGS));
+		q.finish();
+		t0 = wall::now();
+		OCL_CHECK(err, err = q.enqueueTask(krnl1));
+		q.finish();
+		printf("Launch probe   : %lf ms (empty kernel run, XRT overhead)\n", ms_since(t0));
+		OCL_CHECK(err, err = krnl1.setArg(2, buffer_requests));
+		OCL_CHECK(err, err = krnl1.setArg(5, op_max));
+	}
 
 	// RUN
 	std::cout << "STARTING KERNEL(S)" << std::endl;
