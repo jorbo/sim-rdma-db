@@ -4,9 +4,9 @@
 #include <ap_int.h>
 #include <ap_axi_sdata.h>
 
-
 //! Maximum number of remote nodes the HLS kernel can address via RDMA
 #define MAX_KRNL_NODES 16u
+#define RDMA_LANDING_SLOTS 2
 
 typedef ap_axiu<512, 0, 0, 0> pkt512;
 typedef ap_axiu<256, 0, 0, 0> pkt256;
@@ -15,7 +15,6 @@ typedef ap_axiu<64, 0, 0, 0> pkt64;
 typedef ap_axiu<32, 0, 0, 0> pkt32;
 typedef ap_axiu<16, 0, 0, 0> pkt16;
 typedef ap_axiu<8, 0, 0, 0> pkt8;
-
 
 //! @brief One-sided RDMA read operation
 void rdma_read(
@@ -28,8 +27,7 @@ void rdma_read(
 	//! Length in bytes of the data to read
 	int s_axi_len,
 	//! Carries opcode for the network kernel
-	hls::stream<pkt256>& m_axis_tx_meta
-);
+	hls::stream<pkt256> &m_axis_tx_meta);
 
 //! @brief One-sided RDMA write operation
 void rdma_write(
@@ -44,10 +42,9 @@ void rdma_write(
 	//! Value to write
 	ap_uint<64> write_value,
 	//! Opcode for the network kernel
-	hls::stream<pkt256>& m_axis_tx_meta,
+	hls::stream<pkt256> &m_axis_tx_meta,
 	//! Data stream for the network kernel
-	hls::stream<pkt64>& m_axis_tx_data
-);
+	hls::stream<pkt64> &m_axis_tx_data);
 
 void rdma_write_through(
 	//! Local Queue Pair Number
@@ -61,10 +58,9 @@ void rdma_write_through(
 	//! Value to write
 	ap_uint<64> write_value,
 	//! Opcode for the network kernel
-	hls::stream<pkt256>& m_axis_tx_meta,
+	hls::stream<pkt256> &m_axis_tx_meta,
 	//! Data stream for the network kernel
-	hls::stream<pkt64>& m_axis_tx_data
-);
+	hls::stream<pkt64> &m_axis_tx_data);
 
 //! @brief Build the tx_meta beat for a one-sided RDMA read of a BRAM/HBM
 //!        landing pad, without writing it to a stream.
@@ -107,8 +103,7 @@ void rdma_bram_read(
 	//! Length in bytes of the data to read
 	int s_axi_len,
 	//! Opcode for the network kernel
-	hls::stream<pkt256>& m_axis_tx_meta
-);
+	hls::stream<pkt256> &m_axis_tx_meta);
 
 void rdma_bram_write(
 	//! Local Queue Pair Number
@@ -122,7 +117,6 @@ void rdma_bram_write(
 	//! Value to write
 	ap_uint<64> write_value,
 	//! Opcode for the network kernel
-	hls::stream<pkt256>& m_axis_tx_meta,
+	hls::stream<pkt256> &m_axis_tx_meta,
 	//! Data stream for the network kernel
-	hls::stream<pkt64>& m_axis_tx_data
-);
+	hls::stream<pkt64> &m_axis_tx_data);

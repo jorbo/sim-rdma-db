@@ -146,7 +146,7 @@ wire[103:0]  axis_to_dm_mem_write_cmd_tdata;
 assign axis_to_dm_mem_write_cmd_tvalid = s_axis_mem_write_cmd.valid;
 assign s_axis_mem_write_cmd.ready = axis_to_dm_mem_write_cmd_tready;
 // [103:100] reserved, [99:96] tag, [95:32] address,[31] drr, [30] eof, [29:24] dsa, [23] type, [22:0] btt (bytes to transfer)
-assign axis_to_dm_mem_write_cmd_tdata = {8'h0, s_axis_mem_write_cmd_address, 1'b1, 1'b1, 6'h0, 1'b1, s_axis_mem_write_cmd.length[22:0]};
+assign axis_to_dm_mem_write_cmd_tdata = {4'h0, s_axis_mem_write_cmd_address[6:3], s_axis_mem_write_cmd_address, 1'b1, 1'b1, 6'h0, 1'b1, s_axis_mem_write_cmd.length[22:0]};
 
 wire        axis_to_dm_mem_read_cmd_tvalid;
 wire        axis_to_dm_mem_read_cmd_tready;
