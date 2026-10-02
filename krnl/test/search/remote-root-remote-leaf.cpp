@@ -67,7 +67,12 @@ bool remote_root_remote_leaf(KERNEL_ARG_DECS) {
 
 	search_out_t result = resp_buffer[0].search;
 	if (result.status != SUCCESS || result.value.data != -search_key) {
-		std::cerr << "Remote-root/remote-leaf search returned the wrong result" << std::endl;
+		std::cerr << "Remote-root/remote-leaf search returned the wrong result: status="
+		          << (int)result.status << " (" << ERROR_CODE_NAMES[result.status] << ")"
+		          << " value=0x" << std::hex << (uint32_t)result.value.data << std::dec
+		          << " expected SUCCESS/0x" << std::hex << (uint32_t)(bdata_t)-search_key << std::dec
+		          << " [RESTART here means a completion tag did not match its pending slot]"
+		          << std::endl;
 		pass = false;
 	}
 
