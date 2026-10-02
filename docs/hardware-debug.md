@@ -40,8 +40,11 @@ The ILA cores are reached over PCIe XVC, not JTAG. Use the native ELF
 from the Vivado install; the `xvc_pcie.zip` driver build does not open the
 device.
 
-On the FPGA node (xclbin must be loaded):
+On the FPGA node (xclbin must be loaded). The remote home is `/users/<user>`
+on OCT nodes; `btree-run` only exists once `deploy-run.sh` has run there,
+so create it on a fresh node:
 ```
+ssh <node> 'mkdir -p ~/btree-run'
 scp -p /home/Xilinx/Vivado/2023.2/bin/unwrapped/lnx64.o/xvc_pcie <node>:~/btree-run/xvc_pcie
 ssh <node>
 source /opt/xilinx/xrt/setup.sh
