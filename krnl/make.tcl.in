@@ -12,7 +12,7 @@ create_clock -period ${CLOCK_PERIOD} -name default
 
 set_top ${PROJECT_NAME}
 
-config_interface -m_axi_latency=64
+config_interface -m_axi_latency=40
 config_interface -m_axi_alignment_byte_size=64
 config_interface -m_axi_max_widen_bitwidth=64
 config_rtl -register_reset_num=3
