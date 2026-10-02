@@ -12,10 +12,11 @@
 # Environment:
 #   REMOTE_DIR     remote working directory (default: btree-run)
 #   XRT_INI        runtime configuration copied to each node (default: xrt.ini)
-#   RDMA_SELFTEST  0 (default). The host-driven manual READ is currently a
-#                  no-op: stack_top's setup FSM ignores ARG_OP/rAddr/lAddr,
-#                  so the probe issues nothing and prints stale landing
-#                  bytes. Leave 0 until the manual-op path is restored.
+#   RDMA_SELFTEST  0 (default). Set to 1 for a host-driven RDMA READ of the
+#                  table's leaf 0 before the B-tree run (roce_host_op in
+#                  stack_top). Expect landing bytes "1 2 ffffffff ...".
+#                  Its completion token is steered away from the kernel,
+#                  so the B-tree run afterwards is unaffected.
 #   ILA_ARMING     0 (default). Set to 1 to pause the head after both RoCE
 #                  endpoints are ready. Arm the ILA, then press Enter in this
 #                  terminal to start the head workload. RUN_TIMEOUT includes
