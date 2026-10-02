@@ -28,7 +28,7 @@ bool remote_root_local_leaf(KERNEL_ARG_DECS) {
 	DECLARE_RDMA_ARGS
 	my_node_id = local_id;
 	local_qpn = 0x101;
-	SIMULATE_REMOTE_FETCH(remote_root_node);
+	SIMULATE_REMOTE_FETCH(0, remote_root_node);
 
 	krnl(KERNEL_ARG_VARS);
 

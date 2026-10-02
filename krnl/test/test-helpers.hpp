@@ -56,7 +56,7 @@ extern "C"
 #define SIMULATE_REMOTE_FETCH(slot_, fake_node)     \
 	do                                              \
 	{                                               \
-		resp_in_slot[slot_] = fake_node             \
+		resp_in_slot[slot_] = fake_node;             \
 		pkt32 _completion_tok;                      \
 		_completion_tok.data = (5 * (slot_)) & 0xF; \
 		_completion_tok.keep = 0xF;                 \
