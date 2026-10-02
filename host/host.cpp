@@ -1,4 +1,5 @@
 #include "host.hpp"
+#include <chrono>
 #include "bootstrap.hpp"
 #include "myopencl.hpp"
 #include "device.hpp"
@@ -127,7 +128,15 @@ static void run_kernel(
 {
 	constexpr int FROM_HOST_FLAGS = 0;
 	cl_int err;
-	clock_t htod, dtoh, comp;
+	// Wall-clock, not clock(): clock() is process CPU time, and how much of
+	// that q.finish() burns depends on whether XRT busy-polls or sleeps on
+	// the completion interrupt, not on how long the kernel ran.
+	using wall = std::chrono::steady_clock;
+	wall::time_point t0;
+	double htod_ms, dtoh_ms, comp_ms;
+	auto ms_since = [](wall::time_point t) {
+		return std::chrono::duration<double, std::milli>(wall::now() - t).count();
+	};
 
 	// The kernel only needs this node's connection-table lookup key. Passing
 	// it as a scalar avoids a separate AXI read before the first RDMA command.
@@ -165,33 +174,33 @@ static void run_kernel(
 
 	// HOST -> DEVICE
 	std::cout << "HOST -> DEVICE" << std::endl;
-	htod = clock();
+	t0 = wall::now();
 	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
 					   {buffer_root, buffer_memory, buffer_requests},
 					   FROM_HOST_FLAGS));
 	q.finish();
-	htod = clock() - htod;
+	htod_ms = ms_since(t0);
 
 	// RUN
 	std::cout << "STARTING KERNEL(S)" << std::endl;
-	comp = clock();
+	t0 = wall::now();
 	OCL_CHECK(err, err = q.enqueueTask(krnl1));
 	q.finish();
-	comp = clock() - comp;
+	comp_ms = ms_since(t0);
 	std::cout << "KERNEL(S) FINISHED" << std::endl;
 
 	// DEVICE -> HOST (root can be updated by the kernel on tree splits)
 	std::cout << "HOST <- DEVICE" << std::endl;
-	dtoh = clock();
+	t0 = wall::now();
 	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
 					   {buffer_root, buffer_memory, buffer_responses},
 					   CL_MIGRATE_MEM_OBJECT_HOST));
 	q.finish();
-	dtoh = clock() - dtoh;
+	dtoh_ms = ms_since(t0);
 
-	printf("Host -> Device : %lf ms\n", 1000.0 * htod / CLOCKS_PER_SEC);
-	printf("Device -> Host : %lf ms\n", 1000.0 * dtoh / CLOCKS_PER_SEC);
-	printf("Computation    : %lf ms\n", 1000.0 * comp / CLOCKS_PER_SEC);
+	printf("Host -> Device : %lf ms\n", htod_ms);
+	printf("Device -> Host : %lf ms\n", dtoh_ms);
+	printf("Computation    : %lf ms (wall clock, enqueueTask to finish)\n", comp_ms);
 }
 
 TreeOutput run_fpga_tree(TreeDevice &dev, TreeInput &input,
