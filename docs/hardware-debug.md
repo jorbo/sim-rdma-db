@@ -58,6 +58,15 @@ ssh -N -L 10200:localhost:10200 <node> &
 hw_server -s TCP::3121 -e "set auto-open-servers xilinx-xvc:localhost:10200"
 ```
 
+On wolverine `/tmp` is mounted `noexec`, and `cs_server` (launched by
+`vivado_lab`) must map a bundled `libz.so.1` from its temp dir, failing
+with `libz.so.1: failed to map segment from shared object`. Point the temp
+dir somewhere executable before running `vivado_lab`:
+```
+mkdir -p .vivado-tmp
+export TMPDIR=$PWD/.vivado-tmp TMP=$TMPDIR TEMP=$TMPDIR
+```
+
 `scripts/ila-capture.tcl` connects to `localhost:3121`. Do **not** use
 `scripts/ila-capture.sh` without `--host` in this arrangement: its local
 mode tries to start another `hw_server` on 3121.
