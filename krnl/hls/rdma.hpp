@@ -6,7 +6,12 @@
 
 //! Maximum number of remote nodes the HLS kernel can address via RDMA
 #define MAX_KRNL_NODES 16u
-#define RDMA_LANDING_SLOTS 2
+#define RDMA_LANDING_SLOTS 8
+#define SEARCH_WINDOW      8   // searches admitted per batch
+#if SEARCH_WINDOW > RDMA_LANDING_SLOTS
+#error "SEARCH_WINDOW must not exceed RDMA_LANDING_SLOTS: each in-flight search holds one slot"
+#endif
+
 
 typedef ap_axiu<512, 0, 0, 0> pkt512;
 typedef ap_axiu<256, 0, 0, 0> pkt256;

@@ -9,11 +9,15 @@
 #include "ramstream.hpp"
 
 
-//! @brief State machine to execute search operations with local/remote dispatch.
+//! @brief Search process with local/remote dispatch and overlapped remote fetches.
 //!
-//! Runs as a DATAFLOW process: consumes tagged search inputs until `last` is
-//! observed, emitting a tagged output for each (filler in → filler out) to
-//! keep the pipeline in lockstep.
+//! Runs as a DATAFLOW process. Admits up to SEARCH_WINDOW tagged inputs per
+//! batch, walks them concurrently with up to RDMA_LANDING_SLOTS RDMA reads in
+//! flight (one landing slot per outstanding read, response matched to its
+//! slot by the DataMover tag), and emits the batch's outputs in input order
+//! so sm_encode stays in lockstep with sm_insert. Stops after the input
+//! tagged `last`; filler inputs (has_payload=false) produce filler outputs.
+
 void sm_search(
 	bptr_t         root,
 	node_id_t      local_id,

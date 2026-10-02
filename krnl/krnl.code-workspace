@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../host"
+		},
+		{
+			"path": "../fpga-network-stack"
+		},
+		{
+			"path": "../rocetest_krnl"
+		}
+	],
+	"settings": {}
+}
