@@ -42,17 +42,16 @@ extern "C"
 	root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset, \
 		my_node_id, local_qpn, m_axis_tx_meta, s_axis_completion, resp_in
 
-//! Simulate exactly one in-flight remote RDMA-read response.
+//! Pre-stage one remote RDMA-read response in landing slot `slot_`.
 //!
-//! Call BEFORE invoking krnl(...). Stores `fake_node` in resp_in_slot and
-//! pre-pushes one completion token into s_axis_completion so the kernel's
-//! fetch_node will (a) emit its RDMA-read meta into m_axis_tx_meta,
-//! (b) read the pre-staged completion token, then (c) read the pre-staged Node
-//! from resp_in[0].
+//! Call BEFORE invoking krnl(...), once per remote fetch the run will make,
+//! in fetch order. Stores `fake_node` in resp_in_slot[slot_] and pushes the
+//! completion token the hardware would return for that slot: the DataMover
+//! tag is address[6:3] of the landing address (mem_single_inf.sv), i.e.
+//! (5 * slot) mod 16 for 40-byte Nodes, which fetch_node inverts with * 13.
+//! The kernel rotates slots 0..RDMA_LANDING_SLOTS-1, so stage slot 0 first.
 //!
 //! Requires that `DECLARE_RDMA_ARGS` has already been expanded in scope.
-//! First-light limitation: at most one outstanding remote fetch per kernel run.
-//! Multiple remote fetches in one run will all read the same resp_in_slot.
 #define SIMULATE_REMOTE_FETCH(slot_, fake_node)     \
 	do                                              \
 	{                                               \
