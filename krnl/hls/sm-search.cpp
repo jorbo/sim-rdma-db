@@ -35,7 +35,8 @@ static bool advance(
 		return true;
 	}
 	cur_ptr[sid] = r.value.ptr;
-	work_t w; w.sid = sid; w.ptr = r.value.ptr;
+	work_t w; w.sid = sid; 
+	w.ptr = r.value.ptr;
 	work.write(w);
 	return false;
 }
@@ -84,7 +85,8 @@ void sm_search(
 			cur_ptr[admitted] = root;
 			saw_last = in.last;
 			if (in.has_payload) {
-				work_t w; w.sid = admitted; w.ptr = root;
+				work_t w; w.sid = admitted; 
+				w.ptr = root;
 				work.write(w);
 				remaining++;
 			} else {
@@ -141,8 +143,8 @@ void sm_search(
 		if (saw_last) break;
 	}
 
-	// drain_slots: for (ap_uint<4> s = 0; s < RDMA_LANDING_SLOTS; s++) {
-	// 	free_slots.read();
-	// }
+	drain_slots: for (ap_uint<4> s = 0; s < RDMA_LANDING_SLOTS; s++) {
+		free_slots.read();
+	}
 
 }
