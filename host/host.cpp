@@ -1,6 +1,7 @@
 #include "host.hpp"
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include "bootstrap.hpp"
 #include "myopencl.hpp"
 #include "device.hpp"
@@ -186,7 +187,8 @@ static void run_kernel(
 	// A request buffer holding one NOP makes sm_ramstream_req stop at once
 	// and the dataflow drains in a few hundred cycles, so this wall time is
 	// almost entirely XRT. Subtract it from "Computation" for kernel time.
-	if (getenv("LAUNCH_PROBE") != nullptr) {
+	const char *launch_probe = getenv("LAUNCH_PROBE");
+	if (launch_probe != nullptr && std::strcmp(launch_probe, "1") == 0) {
 		std::vector<Request, aligned_allocator<Request>> nop(1);
 		nop[0].opcode = NOP;
 		OCL_CHECK(err, cl::Buffer buffer_nop(

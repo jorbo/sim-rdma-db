@@ -21,6 +21,9 @@
 #                  endpoints are ready. Arm the ILA, then press Enter in this
 #                  terminal to start the head workload. RUN_TIMEOUT includes
 #                  time spent waiting at this prompt.
+#   LAUNCH_PROBE   0 (default). Set to 1 to time an empty kernel launch on
+#                  the head before the real run ("Launch probe" line in
+#                  head.log); subtract it from "Computation" for kernel time.
 #   RUN_TIMEOUT    seconds before the head node run is declared hung and
 #                  debug state is collected (default: 180; 0 disables)
 #
@@ -38,6 +41,7 @@ CFG=${3:-nodes.cfg}
 REMOTE_DIR=${REMOTE_DIR:-btree-run}
 SELFTEST=${RDMA_SELFTEST:-0}
 ILA_ARMING=${ILA_ARMING:-0}
+LAUNCH_PROBE=${LAUNCH_PROBE:-0}
 RUN_TIMEOUT=${RUN_TIMEOUT:-180}
 # Non-interactive ssh does not load the XRT environment; source it
 # explicitly in every remote run command.
@@ -154,11 +158,11 @@ if [ "$RUN_TIMEOUT" -gt 0 ] 2>/dev/null; then
 	TIMEOUT_CMD="timeout --foreground $RUN_TIMEOUT"
 fi
 
-echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, ILA_ARMING=$ILA_ARMING, timeout ${RUN_TIMEOUT}s) =="
+echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, ILA_ARMING=$ILA_ARMING, LAUNCH_PROBE=$LAUNCH_PROBE, timeout ${RUN_TIMEOUT}s) =="
 set +e
 $TIMEOUT_CMD ssh "$HEAD" \
 	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
-	 XRT_INI_PATH=./xrt.ini RDMA_SELFTEST=$SELFTEST ILA_ARMING=$ILA_ARMING ./host_exe \
+	 XRT_INI_PATH=./xrt.ini RDMA_SELFTEST=$SELFTEST ILA_ARMING=$ILA_ARMING LAUNCH_PROBE=$LAUNCH_PROBE ./host_exe \
 	 krnl.server1.xclbin 1 $CFG_BASE" | tee head.log
 RC=${PIPESTATUS[0]}
 set -e
