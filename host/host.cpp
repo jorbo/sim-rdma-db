@@ -2,7 +2,7 @@
 #include "bootstrap.hpp"
 #include "myopencl.hpp"
 #include "device.hpp"
-#include 
+#include "defs.h"
 extern "C"
 {
 #include "../krnl/core/node.h"

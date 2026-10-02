@@ -36,8 +36,8 @@ extern "C"
 	int local_qpn = 0;                     \
 	hls::stream<pkt256> m_axis_tx_meta;    \
 	hls::stream<pkt32> s_axis_completion;  \
-	Node resp_in_slot[RDMA_LANDING_SLOTS]; \
-	Node *resp_in = &resp_in_slot;
+	Node resp_in_slot[RDMA_LANDING_SLOTS] = {}; \
+	Node *resp_in = resp_in_slot;
 #define KERNEL_ARG_VARS                                          \
 	root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset, \
 		my_node_id, local_qpn, m_axis_tx_meta, s_axis_completion, resp_in
@@ -53,15 +53,15 @@ extern "C"
 //! Requires that `DECLARE_RDMA_ARGS` has already been expanded in scope.
 //! First-light limitation: at most one outstanding remote fetch per kernel run.
 //! Multiple remote fetches in one run will all read the same resp_in_slot.
-#define SIMULATE_REMOTE_FETCH(fake_node)          \
-	do                                            \
-	{                                             \
-		resp_in_slot = (fake_node);               \
-		pkt32 _completion_tok;                    \
-		_completion_tok.data = 0;                 \
-		_completion_tok.keep = 0xF;               \
-		_completion_tok.last = 1;                 \
-		s_axis_completion.write(_completion_tok); \
+#define SIMULATE_REMOTE_FETCH(slot_, fake_node)     \
+	do                                              \
+	{                                               \
+		resp_in_slot[slot_] = fake_node             \
+		pkt32 _completion_tok;                      \
+		_completion_tok.data = (5 * (slot_)) & 0xF; \
+		_completion_tok.keep = 0xF;                 \
+		_completion_tok.last = 1;                   \
+		s_axis_completion.write(_completion_tok);   \
 	} while (0)
 
 //!@brief Print a hex dump of a section of HBM grouped by object
