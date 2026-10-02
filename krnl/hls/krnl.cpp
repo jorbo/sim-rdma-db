@@ -32,7 +32,7 @@ void krnl(
 	#pragma HLS INTERFACE s_axilite port=reset
 	#pragma HLS INTERFACE s_axilite port=my_node_id
 	#pragma HLS INTERFACE s_axilite port=local_qpn
-	#pragma HLS INTERFACE m_axi     port=resp_in   bundle=gmem5 depth=1  offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=1
+	#pragma HLS INTERFACE m_axi     port=resp_in   bundle=gmem5 depth=RDMA_LANDING_SLOTS  offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=1
 	#pragma HLS INTERFACE axis port=m_axis_tx_meta    depth=64
 	#pragma HLS INTERFACE axis port=s_axis_completion depth=64
 
