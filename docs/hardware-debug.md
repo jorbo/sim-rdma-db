@@ -66,6 +66,11 @@ dir somewhere executable before running `vivado_lab`:
 mkdir -p .vivado-tmp
 export TMPDIR=$PWD/.vivado-tmp TMP=$TMPDIR TEMP=$TMPDIR
 ```
+Set all three to the same absolute path, or unset all three. An *empty*
+`TMPDIR`/`TMP`/`TEMP` makes Vivado (including a v++ link run) try to
+create `/<pid>` at the filesystem root and fail with
+`[Common 17-1974] Error while creating directory path /<pid>`, hours into
+place-and-route. Check with `env | grep -i '^tmp\|^temp'` before a build.
 
 `scripts/ila-capture.tcl` connects to `localhost:3121`. Do **not** use
 `scripts/ila-capture.sh` without `--host` in this arrangement: its local
