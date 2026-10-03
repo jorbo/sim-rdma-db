@@ -19,10 +19,10 @@ void krnl(
 	hls::stream<pkt32>&  s_axis_completion,
 	Node        *resp_in
 ) {
-	#pragma HLS INTERFACE m_axi port=root        bundle=gmem3 depth=1   offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=1  max_write_burst_length=1
+	#pragma HLS INTERFACE m_axi port=root        bundle=gmem3 depth=1   offset=slave latency=40 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=1  max_write_burst_length=1
 	#pragma HLS INTERFACE m_axi port=hbm         bundle=gmem0 depth=40  offset=slave latency=40 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
-	#pragma HLS INTERFACE m_axi port=req_buffer  bundle=gmem1 depth=256 offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
-	#pragma HLS INTERFACE m_axi port=resp_buffer bundle=gmem2 depth=256 offset=slave latency=64 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
+	#pragma HLS INTERFACE m_axi port=req_buffer  bundle=gmem1 depth=256 offset=slave latency=40 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
+	#pragma HLS INTERFACE m_axi port=resp_buffer bundle=gmem2 depth=256 offset=slave latency=40 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
 	// No explicit bundle names: an explicit `bundle=control` clashes with the
 	// default bundle the m_axi offset registers land in, making HLS emit a
 	// second control interface (s_axi_control_r) that XRT rejects at load.

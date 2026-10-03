@@ -11,6 +11,12 @@
 		},
 		{
 			"path": "../rocetest_krnl"
+		},
+		{
+			"path": "../docs"
+		},
+		{
+			"path": "../btree_logs"
 		}
 	],
 	"settings": {}
