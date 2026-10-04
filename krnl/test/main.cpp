@@ -49,6 +49,23 @@ int main() {
 		failed++;
 	}
 
+	std::cout << "--- Batch Dedup Root ---" << std::endl;
+	if (batch_dedup_root(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
+		std::cout << "\nPassed!\n" << std::endl;
+		passed++;
+	} else {
+		std::cerr << "\nFailed!\n" << std::endl;
+		failed++;
+	}
+	std::cout << "--- Batch Mixed Local/Remote ---" << std::endl;
+	if (batch_mixed_local_remote(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
+		std::cout << "\nPassed!\n" << std::endl;
+		passed++;
+	} else {
+		std::cerr << "\nFailed!\n" << std::endl;
+		failed++;
+	}
+
 	std::cout << "\n\n=== Insert Tests ===" << std::endl;
 	std::cout << "--- Leaf Node ---" << std::endl;
 	if (leaf_node(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
