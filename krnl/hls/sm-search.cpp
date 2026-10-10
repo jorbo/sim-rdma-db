@@ -13,6 +13,10 @@
 // batch. Fetches within a level overlap (up to RDMA_LANDING_SLOTS in
 // flight); there is a barrier between levels.
 
+// Index types: uidx/slot/landed name one of 16 entries (4 bits); counters
+// that run from 0 up to and including SEARCH_WINDOW or RDMA_LANDING_SLOTS
+// (admitted, n_uniq, outstanding, loop indices) must be 5 bits or the
+// `< 16` comparison can never be false.
 // One fetch to issue: distinct-pointer index `uidx` at this level, node `ptr`.
 struct work_t {
 	ap_uint<4> uidx;
@@ -31,7 +35,7 @@ struct pending_t {
 static void apply_node(
 	ap_uint<4>               uidx,
 	const Node              &n,
-	ap_uint<4>               admitted,
+	ap_uint<5>               admitted,
 	const search_tagged_in_t win_in [SEARCH_WINDOW],
 	const bptr_t             uniq_ptr[SEARCH_WINDOW],
 	bptr_t                   cur_ptr [SEARCH_WINDOW],
@@ -41,7 +45,7 @@ static void apply_node(
 {
 	#pragma HLS inline
 	const bptr_t node_ptr = uniq_ptr[uidx];
-	apply_loop: for (ap_uint<4> i = 0; i < SEARCH_WINDOW; i++) {
+	apply_loop: for (ap_uint<5> i = 0; i < SEARCH_WINDOW; i++) {
 		#pragma HLS pipeline II=1
 		if (i < admitted && !done[i] && cur_ptr[i] == node_ptr) {
 			const bkey_t key = win_in[i].key;
@@ -94,7 +98,7 @@ void sm_search(
 
 	bool tag_mismatch = false;   // sticky: a token's tag disagreed with its pending slot
 
-	prefill_slots: for (ap_uint<4> s = 0; s < RDMA_LANDING_SLOTS; s++) {
+	prefill_slots: for (ap_uint<5> s = 0; s < RDMA_LANDING_SLOTS; s++) {
 		free_slots.write(s);
 	}
 
@@ -102,7 +106,7 @@ void sm_search(
 		#pragma HLS loop_tripcount max=NUM_REQUESTS/SEARCH_WINDOW
 
 		// ---- admit up to SEARCH_WINDOW inputs, stop at `last` ----
-		ap_uint<4> admitted = 0;
+		ap_uint<5> admitted = 0;
 		bool       saw_last = false;
 		admit_loop: while (admitted < SEARCH_WINDOW && !saw_last) {
 			search_tagged_in_t in = input.read();   // blocking: nothing is outstanding here
@@ -119,12 +123,12 @@ void sm_search(
 			#pragma HLS loop_tripcount max=MAX_LEVELS+1
 
 			// 1. distinct pointers among the keys still walking
-			ap_uint<4> n_uniq = 0;
-			dedup_loop: for (ap_uint<4> i = 0; i < SEARCH_WINDOW; i++) {
+			ap_uint<5> n_uniq = 0;
+			dedup_loop: for (ap_uint<5> i = 0; i < SEARCH_WINDOW; i++) {
 				#pragma HLS pipeline II=1
 				if (i < admitted && !done[i]) {
 					bool seen = false;
-					match_loop: for (ap_uint<4> j = 0; j < SEARCH_WINDOW; j++) {
+					match_loop: for (ap_uint<5> j = 0; j < SEARCH_WINDOW; j++) {
 						#pragma HLS unroll
 						if (j < n_uniq && uniq_ptr[j] == cur_ptr[i]) seen = true;
 					}
@@ -140,7 +144,7 @@ void sm_search(
 
 			// 2. fetch the distinct nodes, overlapping remote reads; apply
 			//    each node to all keys waiting on it as it lands.
-			ap_uint<4> outstanding  = n_uniq;
+			ap_uint<5> outstanding  = n_uniq;
 			bool       prefer_issue = false;
 			event_loop: while (outstanding != 0) {
 				#pragma HLS pipeline off
@@ -182,14 +186,14 @@ void sm_search(
 			}
 
 			// 3. level barrier: everyone still walking moves to its child
-			advance_loop: for (ap_uint<4> i = 0; i < SEARCH_WINDOW; i++) {
+			advance_loop: for (ap_uint<5> i = 0; i < SEARCH_WINDOW; i++) {
 				#pragma HLS unroll
 				if (i < admitted && !done[i]) cur_ptr[i] = next_ptr[i];
 			}
 		}
 
 		// ---- emit in input order ----
-		emit_loop: for (ap_uint<4> i = 0; i < admitted; i++) {
+		emit_loop: for (ap_uint<5> i = 0; i < admitted; i++) {
 			search_tagged_out_t out;
 			out.last        = win_in[i].last;
 			out.has_payload = win_in[i].has_payload;
@@ -201,7 +205,7 @@ void sm_search(
 		if (saw_last) break;
 	}
 
-	drain_slots: for (ap_uint<4> s = 0; s < RDMA_LANDING_SLOTS; s++) {
+	drain_slots: for (ap_uint<5> s = 0; s < RDMA_LANDING_SLOTS; s++) {
 		free_slots.read();
 	}
 }
