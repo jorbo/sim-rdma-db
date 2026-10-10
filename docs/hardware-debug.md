@@ -72,6 +72,20 @@ create `/<pid>` at the filesystem root and fail with
 `[Common 17-1974] Error while creating directory path /<pid>`, hours into
 place-and-route. Check with `env | grep -i '^tmp\|^temp'` before a build.
 
+**Run `hw_server` on the FPGA node, not on wolverine, when the node is far
+away.** XVC does one JTAG shift per network round trip; at the ~75 ms
+RTT between wolverine and the OCT nodes a probe refresh takes an hour.
+With `hw_server` next to `xvc_pcie` the XVC leg is local and only the
+Vivado-to-hw_server link (batched, latency tolerant) crosses the WAN:
+```
+scp -p /home/Xilinx/Vivado/2023.2/bin/unwrapped/lnx64.o/hw_server <node>:~/btree-run/
+ssh <node> 'cd ~/btree-run && ./hw_server -s TCP::3121 -e "set auto-open-servers xilinx-xvc:localhost:10200"'
+ssh -N -L 127.0.0.1:3121:localhost:3121 <node> &      # on wolverine
+```
+Check `ldd` on the `hw_server` binary first; if it needs Xilinx libraries,
+copy them too and set `LD_LIBRARY_PATH`. Measure the RTT with a TCP
+connect (ICMP is filtered): `python3 -c 'import socket,time;t=time.time();socket.create_connection(("<node>",22)).close();print(time.time()-t)'`.
+
 `scripts/ila-capture.tcl` connects to `localhost:3121`. Do **not** use
 `scripts/ila-capture.sh` without `--host` in this arrangement: its local
 mode tries to start another `hw_server` on 3121.
