@@ -505,10 +505,6 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 	//stream<mmStatus>	s_axis_mem_write_status("s_axis_mem_write_status");
 	stream<routed_net_axis<DATA_WIDTH> >		m_axis_mem_write_data("m_axis_mem_write_data");
 	stream<net_axis<DATA_WIDTH> >		s_axis_mem_read_data("s_axis_mem_read_data");
-	stream<routedMemCmd>				m_axis_local_write_cmd("m_axis_local_write_cmd");
-	stream<routedMemCmd>				m_axis_local_read_cmd("m_axis_local_read_cmd");
-	stream<routed_net_axis<DATA_WIDTH> >		m_axis_local_write_data("m_axis_local_write_data");
-	stream<net_axis<DATA_WIDTH> >			s_axis_local_read_data("s_axis_local_read_data");
 			
 	
 	//interface
@@ -568,10 +564,6 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				//s_axis_mem_write_status,
 				m_axis_mem_write_data,
 				s_axis_mem_read_data,
-				m_axis_local_write_cmd,
-				m_axis_local_read_cmd,
-				m_axis_local_write_data,
-				s_axis_local_read_data,
 				s_axis_qp_interface,
 				s_axis_qp_conn_interface,
 #if POINTER_CHASING_EN
@@ -602,10 +594,6 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				//s_axis_mem_write_status,
 				m_axis_mem_write_data,
 				s_axis_mem_read_data,
-				m_axis_local_write_cmd,
-				m_axis_local_read_cmd,
-				m_axis_local_write_data,
-				s_axis_local_read_data,
 				s_axis_qp_interface,
 				s_axis_qp_conn_interface,
 #if POINTER_CHASING_EN
@@ -638,10 +626,6 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				//s_axis_mem_write_status,
 				m_axis_mem_write_data,
 				s_axis_mem_read_data,
-				m_axis_local_write_cmd,
-				m_axis_local_read_cmd,
-				m_axis_local_write_data,
-				s_axis_local_read_data,
 				s_axis_qp_interface,
 				s_axis_qp_conn_interface,
 #if POINTER_CHASING_EN
@@ -667,10 +651,6 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				//s_axis_mem_write_status,
 				m_axis_mem_write_data,
 				s_axis_mem_read_data,
-				m_axis_local_write_cmd,
-				m_axis_local_read_cmd,
-				m_axis_local_write_data,
-				s_axis_local_read_data,
 				s_axis_qp_interface,
 				s_axis_qp_conn_interface,
 #if POINTER_CHASING_EN
@@ -747,10 +727,6 @@ int test_rx(fakeDRAM* memory, std::ifstream& inputFile,
 				//s_axis_mem_write_status,
 				m_axis_mem_write_data,
 				s_axis_mem_read_data,
-				m_axis_local_write_cmd,
-				m_axis_local_read_cmd,
-				m_axis_local_write_data,
-				s_axis_local_read_data,
 				s_axis_qp_interface,
 				s_axis_qp_conn_interface,
 #if POINTER_CHASING_EN

@@ -27,8 +27,6 @@
 #pragma once
 
 #define IP_VERSION 4
-#define CACHE_SIZE 16384  //128*128
-#define LINE_SIZE  128
 
 #include "../axi_utils.hpp"
 #include "../ipv4/ipv4.hpp"
@@ -56,11 +54,6 @@ void rocev2(hls::stream<net_axis<WIDTH> >&	s_axis_rx_data,
 				hls::stream<routedMemCmd>&		m_axis_mem_read_cmd,
 				hls::stream<routed_net_axis<WIDTH> >&	m_axis_mem_write_data,
 				hls::stream<net_axis<WIDTH> >&	s_axis_mem_read_data,
-				
-				hls::stream<routedMemCmd>&		m_axis_local_write_cmd,
-				hls::stream<routedMemCmd>&		m_axis_local_read_cmd,
-				hls::stream<routed_net_axis<WIDTH> >&	m_axis_local_write_data,
-				hls::stream<net_axis<WIDTH> >&	s_axis_local_read_data,
 				//Interface
 				hls::stream<qpContext>&	s_axis_qp_interface,
 				hls::stream<ifConnReq>&	s_axis_qp_conn_interface,

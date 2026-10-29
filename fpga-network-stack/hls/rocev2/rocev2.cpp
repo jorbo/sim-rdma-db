@@ -28,7 +28,6 @@
 #include "rocev2.hpp"
 
 
-//#define CACHE_DEBUG
 
 //TODO is packet aligned to 32bytes??
 //TODO move onto memory write path or where CRC is checked
@@ -571,400 +570,6 @@ void round_robin_merger(stream<ap_uint<32> >& in1,
 	}
 }
 
-struct cache_block{
-	ap_uint<32> data; //4 byte integer
-	//Tag bits size = bits in mem address(at least 26 for 62000000) - bits to address cache(log2(128*128))
-	ap_uint<12> tag; //note the actual address field in routedmemcmd is 64 bit, so either a larger cache or tag field might be necessary in the future
-	bool valid;
-	bool dirty;
-	
-};
-
-template <int WIDTH>
-void CACHE(
-	//IB2C
-	hls::stream<routedMemCmd>&				m_axis_cache_write_cmd,
-	hls::stream<routedMemCmd>&				m_axis_cache_read_cmd,
-	hls::stream<routed_net_axis<WIDTH> >&	m_axis_cache_write_data,
-	hls::stream<net_axis<WIDTH> >&			s_axis_cache_read_data,
-	//C2MEM
-	hls::stream<routedMemCmd>&				m_axis_mem_write_cmd,
-	hls::stream<routedMemCmd>&				m_axis_mem_read_cmd,
-	hls::stream<routed_net_axis<WIDTH> >&	m_axis_mem_write_data,
-	hls::stream<net_axis<WIDTH> >&			s_axis_mem_read_data,
-	//LOC2C
-	hls::stream<routedMemCmd>&				m_axis_local_write_cmd,
-	hls::stream<routedMemCmd>&				m_axis_local_read_cmd,
-	hls::stream<routed_net_axis<WIDTH> >&	m_axis_local_write_data,
-	hls::stream<net_axis<WIDTH> >&			s_axis_local_read_data
-){
-	static cache_block BRAM_MEM_POOL [CACHE_SIZE]; //[128][128];
-	enum cacheHandlerState{
-		CMD,
-		WRITE,
-		DIRTY_CHECK,
-		WRITE_BACK,
-		WRITE_FETCH_LINE,
-		READ,
-		DMA_WRITE_CMD,
-		DMA_WRITE_DATA,
-		DMA_READ_CMD,
-		DMA_READ_DATA
-	};
-	enum readDataDestination{INIT, LOCAL, REMOTE};
-	enum cacheReturnState {WRITE_RET, READ_RET};
-	static cacheHandlerState state = CMD;
-	static readDataDestination return_stream = INIT;
-	static cacheReturnState returnState = WRITE_RET;
-	static routedMemCmd command;
-	static routedMemCmd main_mem_cmd; 
-	static routed_net_axis<WIDTH> write_data; 
-	static net_axis<WIDTH>  read_data(0,0,0);
-	static ap_uint<14> line_iterator;
-	static ap_uint<1> fetchSent = 0;
-	static ap_uint<64> starting_line_addr;
-
-	// std::cout << "Entering cache" << std::endl << std::endl;
-
-	static int iteration_check = 0; //Debugging - remove later
-	static int write_flag = 0;
-
-
-
-	static routedMemCmd writeCmd;
-	static routed_net_axis<WIDTH> WR;
-	WR.data = 0;
-
-	switch(state) {
-
-		case CMD: {
-			//Look into better way to handle streams than chained else-if
-			if(!m_axis_local_write_cmd.empty()){
-				#ifdef CACHE_DEBUG
-					std::cout << "Local write command recieved" << std::endl;
-				#endif
-				m_axis_local_write_cmd.read(command);
-				write_flag = 1;
-				//line_iterator = command.data.addr%CACHE_SIZE;
-				state = WRITE;
-			}
-			else if (!m_axis_local_read_cmd.empty()){
-				//TODO: Add enum for which stream to return
-				#ifdef CACHE_DEBUG
-					std::cout << "Local read command recieved" << std::endl;
-				#endif
-				m_axis_local_read_cmd.read(command);
-				//line_iterator = command.data.addr%CACHE_SIZE;
-				return_stream = LOCAL;
-				state = READ; 
-			}
-			else if (!m_axis_cache_write_cmd.empty()) {
-
-				#ifdef CACHE_DEBUG
-					std::cout << "Write command recieved" << std::endl;
-				#endif
-				m_axis_cache_write_cmd.read(command);
-				// Normal RDMA traffic must reach the external DataMover so its
-				// landing-buffer write produces the completion status krnl waits for.
-				if (command.dest == ROUTE_DMA) {
-					state = DMA_WRITE_CMD;
-				}
-				else {
-					//line_iterator = command.data.addr%CACHE_SIZE;
-					write_flag = 0;
-					state = WRITE;
-				}
-			} else if (!m_axis_cache_read_cmd.empty()) {
-				#ifdef CACHE_DEBUG
-					std::cout << "Read command recieved" << std::endl;
-				#endif
-				m_axis_cache_read_cmd.read(command);
-				if (command.dest == ROUTE_DMA) {
-					state = DMA_READ_CMD;
-				}
-				else {
-					state = READ;
-					return_stream = REMOTE;
-				}
-			}
-			break; 
-		}
-		case DMA_WRITE_CMD: {
-			if (!m_axis_mem_write_cmd.full()) {
-				m_axis_mem_write_cmd.write(command);
-				state = DMA_WRITE_DATA;
-			}
-			break;
-		}
-		case DMA_WRITE_DATA: {
-			if (!m_axis_cache_write_data.empty() && !m_axis_mem_write_data.full()) {
-				routed_net_axis<WIDTH> dma_word;
-				m_axis_cache_write_data.read(dma_word);
-				m_axis_mem_write_data.write(dma_word);
-				if (dma_word.last) {
-					state = CMD;
-				}
-			}
-			break;
-		}
-		case DMA_READ_CMD: {
-			if (!m_axis_mem_read_cmd.full()) {
-				m_axis_mem_read_cmd.write(command);
-				state = DMA_READ_DATA;
-			}
-			break;
-		}
-		case DMA_READ_DATA: {
-			if (!s_axis_mem_read_data.empty() && !s_axis_cache_read_data.full()) {
-				net_axis<WIDTH> dma_word;
-				s_axis_mem_read_data.read(dma_word);
-				s_axis_cache_read_data.write(dma_word);
-				if (dma_word.last) {
-					state = CMD;
-				}
-			}
-			break;
-		}
-
-		case WRITE: {
-			
-            if(command.data.addr >> 14 == BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].tag){
-				if(write_flag){
-					if(!m_axis_local_write_data.empty()){
-						m_axis_local_write_data.read(write_data);
-
-						#ifdef CACHE_DEBUG
-							std::cout << "Memory addr match: " << command.data.addr << std::endl;
-							ap_uint<32> print_friendly_data = write_data.data & 0xFFFFFFFF;
-							std::cout << "Attempting to write " << std::hex << print_friendly_data << " to block ["<<command.data.addr%CACHE_SIZE<<"]" << std::endl;
-						
-						#endif
-
-						BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].data = write_data.data & 0xFFFFFFFF;
-						BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].dirty = true;
-						BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].valid = true;
-						state = CMD;
-                	}
-				}
-				else{
-					if(!m_axis_cache_write_data.empty()){
-						m_axis_cache_write_data.read(write_data);
-
-						#ifdef CACHE_DEBUG
-							std::cout << "Memory addr match: " << command.data.addr << std::endl;
-							ap_uint<32> print_friendly_data = write_data.data & 0xFFFFFFFF;
-							std::cout << "Attempting to write " << std::hex << print_friendly_data << " to block ["<<command.data.addr%CACHE_SIZE<<"]" << std::endl;
-						
-						#endif
-
-						BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].data = write_data.data & 0xFFFFFFFF;
-						BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].dirty = true;
-						BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].valid = true;
-						state = CMD;
-					}
-				}
-            }
-            else{
-				#ifdef CACHE_DEBUG
-					std::cout << "No match to mem addr in cache" << std::endl;
-					std::cout << "Tag in block(decimal): " << BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].tag << std::endl; 
-				
-				#endif
-
-                line_iterator = command.data.addr%CACHE_SIZE - command.data.addr%LINE_SIZE;
-                state = DIRTY_CHECK;
-                returnState = WRITE_RET;
-            }
-			break; 
-		}
-        case DIRTY_CHECK: {
-            static ap_uint<1> dirty = 0;
-            for(int i = 0; i < LINE_SIZE; i++){
-                if(BRAM_MEM_POOL[line_iterator + i].dirty == true){
-                    dirty = 1;
-                    break;
-                }
-            }
-            if(dirty){
-                state = WRITE_BACK;
-            }
-            else{
-				starting_line_addr = command.data.addr - command.data.addr%LINE_SIZE;
-                state = WRITE_FETCH_LINE;
-            }
-        }
-
-        case WRITE_BACK: {
-			//write back
-			
-			
-
-			std::cout << "Writing back.." <<std::endl;
-			if(!m_axis_mem_write_cmd.full() && !m_axis_mem_write_data.full()){
-				//Figure out the relative block position in the cache line, increment through the line and write every valid && dirty block
-				
-				// writeCmd.data.addr = (BRAM_MEM_POOL[line_iterator].tag << 14) + line_iterator;
-
-
-				
-				// writeCmd.data.len = 64; //could change to LINE_SIZE, likely have to move it to prev state
-				// m_axis_mem_write_cmd.write(writeCmd);
-                //Should make this be a single burst write of length LINE_SIZE*4 that happens once on the first transition to this state
-				int tempLen = 0;
-				int i = 0;
-
-
-				#ifdef CACHE_DEBUG
-						std::cout << "Writing back to address: " << std::hex << line_iterator << std::endl;
-						// std::cout << "Cache_block["<< line_iterator <<"]" <<" tag: " <<BRAM_MEM_POOL[line_iterator].tag << std::endl;
-				#endif
-				while(!BRAM_MEM_POOL[line_iterator].valid && (line_iterator+1)%LINE_SIZE){
-					line_iterator++;
-				}
-
-				writeCmd.data.addr = (BRAM_MEM_POOL[line_iterator].tag << 14) + line_iterator;
-				
-				while((line_iterator+1)%LINE_SIZE != 0 && i < 16){
-					if(!BRAM_MEM_POOL[line_iterator+i].valid){
-						WR.last = 1;
-						break;
-					}
-					WR.data(31+(32*i), 32*i) = BRAM_MEM_POOL[line_iterator].data;
-					WR.keep(3+(4*i), 4*i) = 0xF;
-					tempLen+=4;
-					i++;
-					line_iterator++;
-				}
-				
-				line_iterator += tempLen/4;
-				writeCmd.data.len = tempLen;
-				// m_axis_mem_write_cmd.write(writeCmd);
-				// WR.keep = 0xFFFFFFFFFFFFFFFF;
-                // line_iterator += 16;
-				#ifdef CACHE_DEBUG
-					std::cout << "write packet data: " << std::hex << WR.data << std::endl;
-				#endif
-				if((line_iterator+1)%LINE_SIZE == 0){
-					//send fetch command on transition, so here
-					
-					starting_line_addr = command.data.addr - command.data.addr%LINE_SIZE;
-					line_iterator -= LINE_SIZE - 1;
-					WR.last = 1;
-					state = WRITE_FETCH_LINE;
-				}
-				if(tempLen != 0){
-					m_axis_mem_write_cmd.write(writeCmd);
-					m_axis_mem_write_data.write(WR);
-				}
-			}
-			break;
-		}
-
-        case WRITE_FETCH_LINE: {
-            routedMemCmd fetchCmd(starting_line_addr, 4*LINE_SIZE); //possibly should conditionally load this data only once for efficiency
-            if(!m_axis_mem_read_cmd.full() && !fetchSent){
-                m_axis_mem_read_cmd.write(fetchCmd);
-				#ifdef CACHE_DEBUG
-					std::cout << "Fetching new line from main memory" <<std::endl;
-					std::cout << "New line begins with addr: " << std::hex << starting_line_addr << std::endl;
-					ap_uint<64> end_addr = starting_line_addr + LINE_SIZE -1;
-					std::cout << "And ends with addr: " << std::hex << end_addr  << std::endl;
-				#endif
-                fetchSent = 1;
-            }
-
-            if(!s_axis_mem_read_data.empty()){
-                net_axis<WIDTH> fetchedPacket;
-                s_axis_mem_read_data.read(fetchedPacket);
-
-				#ifdef CACHE_DEBUG
-					std::cout << "mem_read_data data: " <<std::hex << fetchedPacket.data << std::endl; 
-					std::cout << "mem_read_data keep bits: " << std::hex << fetchedPacket.keep << std::endl;
-					std::cout << "mem_read_data last bit: " << fetchedPacket.last << std::endl;
-				#endif
-
-
-                for(int i = 0; i < 16; i++){
-                    BRAM_MEM_POOL[line_iterator].data = (fetchedPacket.data >> i*32) & 0xFFFFFFFF; //hoping the memory manager doesn't do something weird with keep bits
-                    BRAM_MEM_POOL[line_iterator].tag  = (starting_line_addr) >> 14;
-                    BRAM_MEM_POOL[line_iterator].valid = true;
-                    BRAM_MEM_POOL[line_iterator].dirty = false;
-
-					#ifdef CACHE_DEBUG
-						std::cout << "Cache_block[" << std::hex << line_iterator <<"]" << " data:" <<BRAM_MEM_POOL[line_iterator].data << std::endl;
-						std::cout << "Cache_block["<< line_iterator <<"]" <<" tag: " <<BRAM_MEM_POOL[line_iterator].tag << std::endl;
-					#endif
-                    starting_line_addr+=4;
-                    line_iterator++;
-
-                }
-                if(fetchedPacket.last==1){
-					fetchSent = 0;
-					if(returnState == WRITE_RET){
-						state = WRITE;
-					}
-					else{
-						state = READ;
-					}
-                }
-				// #ifdef CACHE_DEBUG
-				// 		std::cout << "Writing back to address: " << std::hex << line_iterator << " data:" <<BRAM_MEM_POOL[line_iterator].data << std::endl;
-				// 		std::cout << "Cache_block["<< line_iterator <<"]" <<" tag: " <<BRAM_MEM_POOL[line_iterator].tag << std::endl;
-				// #endif
-            }
-            break;
-        }
-
-		case READ: {
-			//check that outgoing fifo isn't full
-			if (!s_axis_cache_read_data.full()) {
-				#ifdef CACHE_DEBUG
-					std::cout << "Attempting to read addr: " << std::hex << command.data.addr << std::endl;
-					ap_uint<26> addr2tag_checker = (command.data.addr & 0x3FFFFFF) >> 14;
-					std::cout << "Command addr corresponds to tag: " << std::hex << addr2tag_checker << std::endl;
-					std::cout << "Tag at corresponding block [" <<command.data.addr%CACHE_SIZE << "]" <<" is: " << std::hex << BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].tag << std::endl;
-				#endif
-				if ((BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].tag == ((command.data.addr & 0x3FFFFFF) >> 14)) && BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].valid == true) {
-                    //if only single ints need to get returned at a time we can just return the 1 int packet immediately
-					#ifdef CACHE_DEBUG
-						std::cout << "Addr found in cache" << std::endl << "Value: " << std::hex << BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].data <<std::endl;
-					#endif
-
-                    read_data.data(31, 0) = BRAM_MEM_POOL[command.data.addr%CACHE_SIZE].data;
-                    read_data.keep = 0xF;
-                    read_data.last = 1;
-					//LOC2C stream
-					if(return_stream == LOCAL){
-						s_axis_local_read_data.write(read_data);
-					}
-					//REM2C stream
-					else if(return_stream == REMOTE){
-						s_axis_cache_read_data.write(read_data);
-					}
-					state = CMD;
-				}
-				else{
-				#ifdef CACHE_DEBUG
-					std::cout << "Addr not found in cache. Fetching from main mem" << std::endl; 
-				#endif
-
-					line_iterator = command.data.addr%CACHE_SIZE - command.data.addr%LINE_SIZE; //Should require this to set the iterator to the correct block, but it's jumping forward...
-					state = DIRTY_CHECK;
-                    returnState = READ_RET;
-				}
-			}
-
-			break;
-		}
-
-	}
-
-
-}
-
-
-
-
 template <int WIDTH>
 void rocev2(hls::stream<net_axis<WIDTH> >&	s_axis_rx_data,
 
@@ -976,11 +581,6 @@ void rocev2(hls::stream<net_axis<WIDTH> >&	s_axis_rx_data,
 				hls::stream<routedMemCmd>&		m_axis_mem_read_cmd,
 				hls::stream<routed_net_axis<WIDTH> >&	m_axis_mem_write_data,
 				hls::stream<net_axis<WIDTH> >&	s_axis_mem_read_data,
-				
-				hls::stream<routedMemCmd>&		m_axis_local_write_cmd,
-				hls::stream<routedMemCmd>&		m_axis_local_read_cmd,
-				hls::stream<routed_net_axis<WIDTH> >&	m_axis_local_write_data,
-				hls::stream<net_axis<WIDTH> >&	s_axis_local_read_data,
 				//Interface
 				hls::stream<qpContext>&	s_axis_qp_interface,
 				hls::stream<ifConnReq>&	s_axis_qp_conn_interface,
@@ -997,12 +597,6 @@ void rocev2(hls::stream<net_axis<WIDTH> >&	s_axis_rx_data,
 				ap_uint<32>& 	 regCrcDropPkgCount,
 				ap_uint<32>& 	 regInvalidPsnDropCount)
 {
-//IB2Cache streams
-	static stream<routedMemCmd>		s_axis_cache_write_cmd;
-	static stream<routedMemCmd>		s_axis_cache_read_cmd;
-	static stream<routed_net_axis<WIDTH> > s_axis_cache_write_data;
-	static stream<net_axis<WIDTH> >	m_axis_cache_read_data;
-
 #pragma HLS INLINE
 
 	//metadata fifos
@@ -1078,10 +672,10 @@ void rocev2(hls::stream<net_axis<WIDTH> >&	s_axis_rx_data,
 								s_axis_tx_data,
 								tx_ipUdpMetaFifo,
 								tx_ib2udpFifo,
-								s_axis_cache_write_cmd,
-								s_axis_cache_read_cmd,
-								s_axis_cache_write_data,
-								m_axis_cache_read_data,
+								m_axis_mem_write_cmd,
+								m_axis_mem_read_cmd,
+								m_axis_mem_write_data,
+								s_axis_mem_read_data,
 								s_axis_qp_interface,
 								s_axis_qp_conn_interface,
 #if POINTER_CHASING_EN
@@ -1090,27 +684,6 @@ void rocev2(hls::stream<net_axis<WIDTH> >&	s_axis_rx_data,
 #endif
 								regInvalidPsnDropCount);
 
-
-	/*
-	*  Cache
-	*/
-	CACHE(
-		//IB2C
-		s_axis_cache_write_cmd,
-		s_axis_cache_read_cmd,
-		s_axis_cache_write_data,
-		m_axis_cache_read_data,
-		//C2MEM
-		m_axis_mem_write_cmd,
-		m_axis_mem_read_cmd,
-		m_axis_mem_write_data,
-		s_axis_mem_read_data,
-		//LOC2C
-		m_axis_local_write_cmd,
-		m_axis_local_read_cmd,
-		m_axis_local_write_data,
-		s_axis_local_read_data
-	);
 
 	/*
 	 * Check ICRC of incoming packets
@@ -1188,11 +761,6 @@ void rocev2(hls::stream<net_axis<WIDTH> >&	s_axis_rx_data,
 }
 
 void rocev2_top(
-				//local streams
-				stream<routedMemCmd>&		s_axis_local_bram_write_cmd,
-				stream<routedMemCmd>&		s_axis_local_bram_read_cmd,
-				stream<routed_net_axis<DATA_WIDTH> >&	s_axis_local_bram_write_data,
-				stream<net_axis<DATA_WIDTH> >&	m_axis_local_bram_read_data,
 				//stream<ipUdpMeta>&	s_axis_rx_meta,
 				stream<net_axis<DATA_WIDTH> >&	s_axis_rx_data,
 				//stream<net_axis<DATA_WIDTH> >&	m_axis_rx_data,
@@ -1239,11 +807,6 @@ void rocev2_top(
 	#pragma HLS INTERFACE axis register port=m_axis_mem_write_data
 	#pragma HLS INTERFACE axis register port=s_axis_mem_read_data
 
-	#pragma HLS INTERFACE axis register port=s_axis_local_bram_write_cmd
-	#pragma HLS INTERFACE axis register port=s_axis_local_bram_read_cmd
-	#pragma HLS INTERFACE axis register port=s_axis_local_bram_write_data
-	#pragma HLS INTERFACE axis register port=m_axis_local_bram_read_data
-
 	//CONTROL
 	#pragma HLS INTERFACE axis register port=s_axis_qp_interface
 	#pragma HLS INTERFACE axis register port=s_axis_qp_conn_interface
@@ -1271,10 +834,6 @@ void rocev2_top(
 								m_axis_mem_read_cmd,
 								m_axis_mem_write_data,
 								s_axis_mem_read_data,
-								s_axis_local_bram_write_cmd,
-								s_axis_local_bram_read_cmd,
-								s_axis_local_bram_write_data,
-								m_axis_local_bram_read_data,
 								s_axis_qp_interface,
 								s_axis_qp_conn_interface,
 								local_ip_address,
