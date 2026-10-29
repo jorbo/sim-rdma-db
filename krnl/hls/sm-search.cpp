@@ -29,6 +29,29 @@ struct pending_t {
 	ap_uint<4> slot;
 };
 
+// Remote inner-node cache.
+//
+// Every batch starts at the root and walks the same upper levels, so after
+// the first batch those remote fetches are pure round-trip cost. Inner
+// nodes fetched over RDMA are kept in a small direct-mapped on-chip cache
+// and later batches apply them without a round trip; only the leaf level
+// still goes to the wire. Leaves are never cached (their values are what
+// the search returns) and neither are local nodes (an HBM read is cheap,
+// and sm_insert modifies them concurrently).
+//
+// A cached inner node can go stale if its owner splits it. Searches stay
+// correct the B-link way: find_next follows `next` when the key is past
+// the node's last key, so a stale parent at worst costs extra right-link
+// hops on the level below. The cache lives for one kernel invocation:
+// the host reloads the tree between runs (reset=true), which a persistent
+// cache would need an explicit flush for.
+typedef ap_uint<6> cache_idx_t;   // log2(NODE_CACHE_SIZE)
+
+static cache_idx_t cache_index(bptr_t p) {
+	#pragma HLS inline
+	return (bptr_local_addr(p) ^ ((bptr_t)bptr_node_id(p) << 3)) & (NODE_CACHE_SIZE - 1);
+}
+
 // A node for distinct pointer `uidx` has landed: advance every key in the
 // window that is waiting on that pointer. Returns nothing; keys that reach
 // a result are marked done, the rest get next_ptr for the next level.
@@ -98,6 +121,16 @@ void sm_search(
 
 	bool tag_mismatch = false;   // sticky: a token's tag disagreed with its pending slot
 
+	Node   cache_node [NODE_CACHE_SIZE];
+	bptr_t cache_tag  [NODE_CACHE_SIZE];
+	bool   cache_valid[NODE_CACHE_SIZE];
+	#pragma HLS array_partition variable=cache_valid complete
+
+	cache_clear: for (ap_uint<7> c = 0; c < NODE_CACHE_SIZE; c++) {
+		#pragma HLS unroll
+		cache_valid[c] = false;
+	}
+
 	prefill_slots: for (ap_uint<5> s = 0; s < RDMA_LANDING_SLOTS; s++) {
 		free_slots.write(s);
 	}
@@ -160,14 +193,27 @@ void sm_search(
 					if (landed != p.slot) tag_mismatch = true;
 					Node n = resp_in[landed];                    // AXI read completes here
 					free_slots.write(landed);                    // slot reusable only now
+					const bptr_t fetched = uniq_ptr[p.uidx];
+					if (landed == p.slot && !is_leaf(fetched)) { // never cache a node from a mismatched slot
+						cache_idx_t c  = cache_index(fetched);
+						cache_node [c] = n;
+						cache_tag  [c] = fetched;
+						cache_valid[c] = true;
+					}
 					apply_node(p.uidx, n, admitted, win_in, uniq_ptr, cur_ptr, next_ptr, done, win_out);
 					outstanding--;
 					prefer_issue = true;                         // let a queued issue go next
 				}
 				else if (can_issue) {
 					work_t w = work.read();
+					const cache_idx_t c   = cache_index(w.ptr);
+					const bool        hit = cache_valid[c] && cache_tag[c] == w.ptr;
 					if (bptr_node_id(w.ptr) == local_id) {
 						Node n = hbm[bptr_local_addr(w.ptr)];    // local: no RDMA, no slot
+						apply_node(w.uidx, n, admitted, win_in, uniq_ptr, cur_ptr, next_ptr, done, win_out);
+						outstanding--;
+					} else if (hit) {
+						Node n = cache_node[c];                  // cached remote inner node: no round trip
 						apply_node(w.uidx, n, admitted, win_in, uniq_ptr, cur_ptr, next_ptr, done, win_out);
 						outstanding--;
 					} else {

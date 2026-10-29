@@ -65,6 +65,14 @@ int main() {
 		std::cerr << "\nFailed!\n" << std::endl;
 		failed++;
 	}
+	std::cout << "--- Batch Cache Inner ---" << std::endl;
+	if (batch_cache_inner(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
+		std::cout << "\nPassed!\n" << std::endl;
+		passed++;
+	} else {
+		std::cerr << "\nFailed!\n" << std::endl;
+		failed++;
+	}
 
 	std::cout << "\n\n=== Insert Tests ===" << std::endl;
 	std::cout << "--- Leaf Node ---" << std::endl;

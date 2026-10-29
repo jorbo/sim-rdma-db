@@ -8,6 +8,7 @@
 #include "search/remote-root-remote-leaf.hpp"
 #include "search/batch-dedup-root.hpp"
 #include "search/batch-mixed-local-remote.hpp"
+#include "search/batch-cache-inner.hpp"
 #include "insert/leaf-node.hpp"
 #include "insert/split-root.hpp"
 #include "insert/until-it-breaks.hpp"

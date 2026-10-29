@@ -8,6 +8,7 @@
 #define MAX_KRNL_NODES 16u
 #define RDMA_LANDING_SLOTS 16   // 4-bit DataMover tag: 16 is the ceiling
 #define SEARCH_WINDOW      16  // searches admitted per batch (one level step = one RTT, so bigger is better)
+#define NODE_CACHE_SIZE    64  // remote inner nodes kept by sm_search (power of two, see cache_idx_t)
 #if SEARCH_WINDOW > RDMA_LANDING_SLOTS
 #error "SEARCH_WINDOW must not exceed RDMA_LANDING_SLOTS: a level step can need one slot per key"
 #endif
