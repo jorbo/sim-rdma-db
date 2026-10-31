@@ -49,54 +49,44 @@ bool batch_cache_inner(KERNEL_ARG_DECS) {
 	Node leaf_b_node; clear(&leaf_b_node);
 	leaf_b_node.keys[0] = 15; leaf_b_node.values[0].data = -15;
 
-	// Batch 1 fills the window with keys cycling over both leaves; batch 2
-	// touches both leaves again.
-	const bkey_t pattern[3] = {5, 8, 15};
-	const int    n_keys     = SEARCH_WINDOW + 2;
-	bkey_t keys[n_keys];
-	for (int i = 0; i < SEARCH_WINDOW; i++) keys[i] = pattern[i % 3];
-	keys[SEARCH_WINDOW]     = 5;
-	keys[SEARCH_WINDOW + 1] = 15;
-
+	const bkey_t keys[3] = {5, 8, 15};
 	*root = remote_root;
 	reset_ramstream_offsets();
-	for (int i = 0; i < n_keys; i++) req_buffer[i] = encode_search_req(keys[i]);
-	req_buffer[n_keys].opcode = NOP;
+	for (int i = 0; i < 3; i++) req_buffer[i] = encode_search_req(keys[i]);
+	req_buffer[3].opcode = NOP;
 
 	DECLARE_RDMA_ARGS
 	my_node_id = local_id;
 	local_qpn  = 0x101;
-	// Batch 1: root, inner, leaf_a, leaf_b take slots 0..3. Retired slots go
-	// to the back of the free list, so batch 2's leaf reads get slots 4, 5.
-	// No token is staged for a batch 2 root/inner fetch: if the cache
-	// misses, csim spins waiting for one instead of failing (as with
-	// batch-dedup-root when dedup breaks).
+	// csim retires each read as soon as it is issued, so key 5 lands the
+	// root and the inner node before keys 8 and 15 need them: those two
+	// must hit the cache and fetch only their leaves. No token is staged
+	// for a second root/inner read: if the cache misses, csim spins
+	// waiting for one instead of failing.
 	SIMULATE_REMOTE_FETCH(0, root_node);
 	SIMULATE_REMOTE_FETCH(1, inner_node);
 	SIMULATE_REMOTE_FETCH(2, leaf_a_node);
-	SIMULATE_REMOTE_FETCH(3, leaf_b_node);
-	SIMULATE_REMOTE_FETCH(4, leaf_a_node);
-	SIMULATE_REMOTE_FETCH(5, leaf_b_node);
+	SIMULATE_REMOTE_FETCH(3, leaf_a_node);
+	SIMULATE_REMOTE_FETCH(4, leaf_b_node);
 
 	krnl(KERNEL_ARG_VARS);
 
-	for (int i = 0; i < n_keys; i++) {
+	for (int i = 0; i < 3; i++) {
 		search_out_t r = resp_buffer[i].search;
 		if (r.status != SUCCESS || r.value.data != -(bdata_t)keys[i]) {
-			std::cerr << "key[" << i << "]=" << keys[i] << ": status=" << (int)r.status
+			std::cerr << "key " << keys[i] << ": status=" << (int)r.status
 			          << " value=" << r.value.data << " expected " << -(bdata_t)keys[i] << std::endl;
 			pass = false;
 		}
 	}
 
 	const ap_uint<64> N = sizeof(Node);
-	pass &= expect_beat(m_axis_tx_meta, 0,     0x14 * N, "batch 1 root fetch");
-	pass &= expect_beat(m_axis_tx_meta, 1 * N, 0x0A * N, "batch 1 inner fetch");
-	pass &= expect_beat(m_axis_tx_meta, 2 * N, 0x01 * N, "batch 1 leaf_a fetch");
-	pass &= expect_beat(m_axis_tx_meta, 3 * N, 0x02 * N, "batch 1 leaf_b fetch");
-	// A root or inner beat here means the cache missed.
-	pass &= expect_beat(m_axis_tx_meta, 4 * N, 0x01 * N, "batch 2 leaf_a fetch");
-	pass &= expect_beat(m_axis_tx_meta, 5 * N, 0x02 * N, "batch 2 leaf_b fetch");
+	pass &= expect_beat(m_axis_tx_meta, 0,     0x14 * N, "key 5 root fetch");
+	pass &= expect_beat(m_axis_tx_meta, 1 * N, 0x0A * N, "key 5 inner fetch");
+	// A root or inner beat from here on means the cache missed.
+	pass &= expect_beat(m_axis_tx_meta, 2 * N, 0x01 * N, "key 5 leaf_a fetch");
+	pass &= expect_beat(m_axis_tx_meta, 3 * N, 0x01 * N, "key 8 leaf_a fetch");
+	pass &= expect_beat(m_axis_tx_meta, 4 * N, 0x02 * N, "key 15 leaf_b fetch");
 	if (!m_axis_tx_meta.empty()) {
 		std::cerr << "extra RDMA metadata: a node was fetched more than expected" << std::endl;
 		pass = false;

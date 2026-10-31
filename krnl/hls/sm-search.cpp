@@ -2,30 +2,21 @@
 #include "../core/node.h"
 
 
-// Level-wise batch traversal.
+// Independent per-request traversal.
 //
-// A batch of up to SEARCH_WINDOW keys moves down the tree one level at a
-// time. At each level the kernel collects the DISTINCT nodes the batch is
-// sitting on, fetches each of them once (local HBM read or one RDMA read
-// into a landing slot), and when a node lands applies find_next/find_value
-// to every key that was waiting on it. All keys share the root fetch, most
-// share the internal-level fetches, only the leaf level scales with the
-// batch. Fetches within a level overlap (up to RDMA_LANDING_SLOTS in
-// flight); there is a barrier between levels.
+// Each of the SEARCH_WINDOW lanes holds one search and walks it down the
+// tree on its own: one node fetch at a time (local HBM read or one RDMA
+// read into a landing slot), the next one issued as soon as the previous
+// node lands. This is the client model of Ziegler et al. (SIGMOD'19,
+// fine-grained design): a lane is a client with one request outstanding,
+// no fetch is shared between lanes, and SEARCH_WINDOW is the client count.
+// Lanes form a ring: a lane is refilled from the input once its result has
+// been emitted, so results leave in input order and sm_encode stays in
+// lockstep with sm_insert.
 
-// Index types: uidx/slot/landed name one of 16 entries (4 bits); counters
-// that run from 0 up to and including SEARCH_WINDOW or RDMA_LANDING_SLOTS
-// (admitted, n_uniq, outstanding, loop indices) must be 5 bits or the
-// `< 16` comparison can never be false.
-// One fetch to issue: distinct-pointer index `uidx` at this level, node `ptr`.
-struct work_t {
-	ap_uint<4> uidx;
-	bptr_t     ptr;
-};
-
-// One RDMA read in flight: which distinct pointer, which landing slot.
+// One RDMA read in flight: which lane, which landing slot.
 struct pending_t {
-	ap_uint<4> uidx;
+	ap_uint<4> lane;
 	ap_uint<4> slot;
 };
 
@@ -34,10 +25,10 @@ struct pending_t {
 // The paper's fine-grained design fetches every level over the wire; its
 // caching experiment (appendix A.4) keeps upper levels on the compute
 // side. With the cache on, inner nodes fetched over RDMA are kept in a
-// small direct-mapped on-chip cache and later batches apply them without
-// a round trip; only the leaf level still goes to the wire. Leaves are never cached (their values are what
-// the search returns) and neither are local nodes (an HBM read is cheap,
-// and sm_insert modifies them concurrently).
+// small direct-mapped on-chip cache and later lookups apply them without a
+// round trip. Leaves are never cached (their values are what the search
+// returns) and neither are local nodes (an HBM read is cheap, and
+// sm_insert modifies them concurrently).
 //
 // A cached inner node can go stale if its owner splits it. Searches stay
 // correct the B-link way: find_next follows `next` when the key is past
@@ -54,40 +45,31 @@ static cache_idx_t cache_index(bptr_t p) {
 }
 #endif
 
-// A node for distinct pointer `uidx` has landed: advance every key in the
-// window that is waiting on that pointer. Returns nothing; keys that reach
-// a result are marked done, the rest get next_ptr for the next level.
-static void apply_node(
-	ap_uint<4>               uidx,
-	const Node              &n,
-	ap_uint<5>               admitted,
-	const search_tagged_in_t win_in [SEARCH_WINDOW],
-	const bptr_t             uniq_ptr[SEARCH_WINDOW],
-	bptr_t                   cur_ptr [SEARCH_WINDOW],
-	bptr_t                   next_ptr[SEARCH_WINDOW],
-	bool                     done    [SEARCH_WINDOW],
-	search_out_t             win_out [SEARCH_WINDOW])
+// Node `n`, fetched from `node_ptr`, has landed for one lane's search.
+// Leaves and failed lookups finish the lane; otherwise `ptr` becomes the
+// child (or right sibling) and the lane needs another fetch (returns true).
+static bool descend(
+	const Node   &n,
+	bptr_t        node_ptr,
+	bkey_t        key,
+	bptr_t       &ptr,
+	bool         &done,
+	search_out_t &out)
 {
 	#pragma HLS inline
-	const bptr_t node_ptr = uniq_ptr[uidx];
-	apply_loop: for (ap_uint<5> i = 0; i < SEARCH_WINDOW; i++) {
-		#pragma HLS pipeline II=1
-		if (i < admitted && !done[i] && cur_ptr[i] == node_ptr) {
-			const bkey_t key = win_in[i].key;
-			if (is_leaf(node_ptr)) {
-				win_out[i] = find_value(&n, key);
-				done[i]    = true;
-			} else {
-				bstatusval_t r = find_next(&n, key);
-				if (r.status == SUCCESS) {
-					next_ptr[i] = r.value.ptr;
-				} else {
-					win_out[i] = r;
-					done[i]    = true;
-				}
-			}
-		}
+	if (is_leaf(node_ptr)) {
+		out  = find_value(&n, key);
+		done = true;
+		return false;
 	}
+	bstatusval_t r = find_next(&n, key);
+	if (r.status == SUCCESS) {
+		ptr = r.value.ptr;
+		return true;
+	}
+	out  = r;
+	done = true;
+	return false;
 }
 
 void sm_search(
@@ -101,27 +83,29 @@ void sm_search(
 	hls::stream<pkt32>&               s_axis_completion,
 	Node                             *resp_in
 ) {
-	hls::stream<work_t>      work("work");
+	hls::stream<ap_uint<4> > work("work");          // lanes waiting to fetch lane_ptr
 	hls::stream<pending_t>   pending("pending");
 	hls::stream<ap_uint<4> > free_slots("free_slots");
 	#pragma HLS stream variable=work       type=fifo depth=SEARCH_WINDOW
 	#pragma HLS stream variable=pending    type=fifo depth=RDMA_LANDING_SLOTS
 	#pragma HLS stream variable=free_slots type=fifo depth=RDMA_LANDING_SLOTS
 
-	search_tagged_in_t win_in  [SEARCH_WINDOW];
-	search_out_t       win_out [SEARCH_WINDOW];
-	bptr_t             cur_ptr [SEARCH_WINDOW];
-	bptr_t             next_ptr[SEARCH_WINDOW];
-	bool               done    [SEARCH_WINDOW];
-	bptr_t             uniq_ptr[SEARCH_WINDOW];
-	#pragma HLS array_partition variable=win_in   complete
-	#pragma HLS array_partition variable=win_out  complete
-	#pragma HLS array_partition variable=cur_ptr  complete
-	#pragma HLS array_partition variable=next_ptr complete
-	#pragma HLS array_partition variable=done     complete
-	#pragma HLS array_partition variable=uniq_ptr complete
+	search_tagged_in_t lane_in  [SEARCH_WINDOW];
+	search_out_t       lane_out [SEARCH_WINDOW];
+	bptr_t             lane_ptr [SEARCH_WINDOW];
+	bool               lane_done[SEARCH_WINDOW];
+	#pragma HLS array_partition variable=lane_in   complete
+	#pragma HLS array_partition variable=lane_out  complete
+	#pragma HLS array_partition variable=lane_ptr  complete
+	#pragma HLS array_partition variable=lane_done complete
 
-	bool tag_mismatch = false;   // sticky: a token's tag disagreed with its pending slot
+	// Lane indices are 4 bits and wrap with the ring; `busy` runs 0..16
+	// and must be 5 bits or `busy < SEARCH_WINDOW` can never be false.
+	ap_uint<4> head = 0;             // oldest lane, next to emit
+	ap_uint<4> tail = 0;             // next lane to fill
+	ap_uint<5> busy = 0;             // lanes in [head, tail)
+	bool saw_last     = false;
+	bool tag_mismatch = false;       // sticky: a token's tag disagreed with its pending slot
 
 #if SEARCH_NODE_CACHE
 	Node   cache_node [NODE_CACHE_SIZE];
@@ -139,128 +123,91 @@ void sm_search(
 		free_slots.write(s);
 	}
 
-	batch_loop: for (;;) {
-		#pragma HLS loop_tripcount max=NUM_REQUESTS/SEARCH_WINDOW
+	// One action per iteration: emit > admit > retire > issue. A lane has
+	// at most one fetch in flight, so SEARCH_WINDOW <= RDMA_LANDING_SLOTS
+	// means a waiting lane never runs out of landing slots.
+	event_loop: for (;;) {
+		#pragma HLS pipeline off
+		#pragma HLS loop_tripcount max=NUM_REQUESTS*(MAX_LEVELS+3)
+		const bool can_emit   = busy != 0 && lane_done[head];
+		const bool can_admit  = !saw_last && busy < SEARCH_WINDOW && !input.empty();
+		const bool can_retire = !s_axis_completion.empty() && !pending.empty();
+		const bool can_issue  = !work.empty() && !free_slots.empty();
 
-		// ---- admit up to SEARCH_WINDOW inputs, stop at `last` ----
-		ap_uint<5> admitted = 0;
-		bool       saw_last = false;
-		admit_loop: while (admitted < SEARCH_WINDOW && !saw_last) {
-			search_tagged_in_t in = input.read();   // blocking: nothing is outstanding here
-			win_in [admitted] = in;
-			cur_ptr[admitted] = root;
-			done   [admitted] = !in.has_payload;    // fillers are finished on arrival
-			if (!in.has_payload) win_out[admitted] = search_out_t();
-			saw_last = in.last;
-			admitted++;
-		}
-
-		// ---- walk the batch down one level at a time ----
-		level_loop: for (;;) {
-			#pragma HLS loop_tripcount max=MAX_LEVELS+1
-
-			// 1. distinct pointers among the keys still walking
-			ap_uint<5> n_uniq = 0;
-			dedup_loop: for (ap_uint<5> i = 0; i < SEARCH_WINDOW; i++) {
-				#pragma HLS pipeline II=1
-				if (i < admitted && !done[i]) {
-					bool seen = false;
-					match_loop: for (ap_uint<5> j = 0; j < SEARCH_WINDOW; j++) {
-						#pragma HLS unroll
-						if (j < n_uniq && uniq_ptr[j] == cur_ptr[i]) seen = true;
-					}
-					if (!seen) {
-						uniq_ptr[n_uniq] = cur_ptr[i];
-						work_t w; w.uidx = n_uniq; w.ptr = cur_ptr[i];
-						work.write(w);
-						n_uniq++;
-					}
-				}
-			}
-			if (n_uniq == 0) break;          // every key has a result
-
-			// 2. fetch the distinct nodes, overlapping remote reads; apply
-			//    each node to all keys waiting on it as it lands.
-			ap_uint<5> outstanding  = n_uniq;
-			bool       prefer_issue = false;
-			event_loop: while (outstanding != 0) {
-				#pragma HLS pipeline off
-				const bool can_retire = !s_axis_completion.empty() && !pending.empty();
-				const bool can_issue  = !work.empty() && !free_slots.empty();
-
-				if (can_retire && !(can_issue && prefer_issue)) {
-					pkt32     tok = s_axis_completion.read();
-					pending_t p   = pending.read();
-					// DataMover tag = address[6:3] of the landing address
-					// (mem_single_inf.sv) = 5*slot mod 16; 13 is its inverse mod 16.
-					ap_uint<4> landed = (tok.data(3, 0) * 13) & 0xF;
-					if (landed != p.slot) tag_mismatch = true;
-					Node n = resp_in[landed];                    // AXI read completes here
-					free_slots.write(landed);                    // slot reusable only now
-#if SEARCH_NODE_CACHE
-					const bptr_t fetched = uniq_ptr[p.uidx];
-					if (landed == p.slot && !is_leaf(fetched)) { // never cache a node from a mismatched slot
-						cache_idx_t c  = cache_index(fetched);
-						cache_node [c] = n;
-						cache_tag  [c] = fetched;
-						cache_valid[c] = true;
-					}
-#endif
-					apply_node(p.uidx, n, admitted, win_in, uniq_ptr, cur_ptr, next_ptr, done, win_out);
-					outstanding--;
-					prefer_issue = true;                         // let a queued issue go next
-				}
-				else if (can_issue) {
-					work_t w = work.read();
-#if SEARCH_NODE_CACHE
-					const cache_idx_t c   = cache_index(w.ptr);
-					const bool        hit = cache_valid[c] && cache_tag[c] == w.ptr;
-#endif
-					if (bptr_node_id(w.ptr) == local_id) {
-						Node n = hbm[bptr_local_addr(w.ptr)];    // local: no RDMA, no slot
-						apply_node(w.uidx, n, admitted, win_in, uniq_ptr, cur_ptr, next_ptr, done, win_out);
-						outstanding--;
-					}
-#if SEARCH_NODE_CACHE
-					else if (hit) {
-						Node n = cache_node[c];                  // cached remote inner node: no round trip
-						apply_node(w.uidx, n, admitted, win_in, uniq_ptr, cur_ptr, next_ptr, done, win_out);
-						outstanding--;
-					}
-#endif
-					else {
-						ap_uint<4>  slot  = free_slots.read();
-						ap_uint<64> raddr = (ap_uint<64>)bptr_local_addr(w.ptr) * sizeof(Node);
-						// Non-blocking issue; the completion is consumed by the retire
-						// branch above, never waited for here (see the PROTOCOL-region
-						// history in git for why that order was once a hang).
-						m_axis_tx_meta.write(rdma_bram_read_meta(
-							(ap_uint<24>)local_qpn, slot * sizeof(Node), raddr, sizeof(Node)));
-						pending_t p; p.uidx = w.uidx; p.slot = slot;
-						pending.write(p);
-					}
-					prefer_issue = false;
-				}
-			}
-
-			// 3. level barrier: everyone still walking moves to its child
-			advance_loop: for (ap_uint<5> i = 0; i < SEARCH_WINDOW; i++) {
-				#pragma HLS unroll
-				if (i < admitted && !done[i]) cur_ptr[i] = next_ptr[i];
-			}
-		}
-
-		// ---- emit in input order ----
-		emit_loop: for (ap_uint<5> i = 0; i < admitted; i++) {
+		if (can_emit) {
 			search_tagged_out_t out;
-			out.last        = win_in[i].last;
-			out.has_payload = win_in[i].has_payload;
-			out.val         = win_out[i];
+			out.last        = lane_in[head].last;
+			out.has_payload = lane_in[head].has_payload;
+			out.val         = lane_out[head];
 			if (tag_mismatch && out.has_payload) out.val.status = RESTART;
 			output.write(out);
+			head++;
+			busy--;
+			if (out.last) break;       // nothing is admitted after `last`
 		}
-
-		if (saw_last) break;
+		else if (can_admit) {
+			search_tagged_in_t in = input.read();
+			lane_in  [tail] = in;
+			lane_ptr [tail] = root;
+			lane_done[tail] = !in.has_payload;     // fillers are finished on arrival
+			if (in.has_payload) work.write(tail);
+			else                lane_out[tail] = search_out_t();
+			saw_last = in.last;
+			tail++;
+			busy++;
+		}
+		else if (can_retire) {
+			pkt32     tok = s_axis_completion.read();
+			pending_t p   = pending.read();
+			// DataMover tag = address[6:3] of the landing address
+			// (mem_single_inf.sv) = 5*slot mod 16; 13 is its inverse mod 16.
+			ap_uint<4> landed = (tok.data(3, 0) * 13) & 0xF;
+			if (landed != p.slot) tag_mismatch = true;
+			Node n = resp_in[landed];                    // AXI read completes here
+			free_slots.write(landed);                    // slot reusable only now
+			const bptr_t fetched = lane_ptr[p.lane];
+#if SEARCH_NODE_CACHE
+			if (landed == p.slot && !is_leaf(fetched)) { // never cache a node from a mismatched slot
+				cache_idx_t c  = cache_index(fetched);
+				cache_node [c] = n;
+				cache_tag  [c] = fetched;
+				cache_valid[c] = true;
+			}
+#endif
+			if (descend(n, fetched, lane_in[p.lane].key, lane_ptr[p.lane], lane_done[p.lane], lane_out[p.lane]))
+				work.write(p.lane);
+		}
+		else if (can_issue) {
+			const ap_uint<4> lane = work.read();
+			const bptr_t     ptr  = lane_ptr[lane];
+#if SEARCH_NODE_CACHE
+			const cache_idx_t c   = cache_index(ptr);
+			const bool        hit = cache_valid[c] && cache_tag[c] == ptr;
+#endif
+			if (bptr_node_id(ptr) == local_id) {
+				Node n = hbm[bptr_local_addr(ptr)];        // local: no RDMA, no slot
+				if (descend(n, ptr, lane_in[lane].key, lane_ptr[lane], lane_done[lane], lane_out[lane]))
+					work.write(lane);
+			}
+#if SEARCH_NODE_CACHE
+			else if (hit) {
+				Node n = cache_node[c];                    // cached remote inner node: no round trip
+				if (descend(n, ptr, lane_in[lane].key, lane_ptr[lane], lane_done[lane], lane_out[lane]))
+					work.write(lane);
+			}
+#endif
+			else {
+				ap_uint<4>  slot  = free_slots.read();
+				ap_uint<64> raddr = (ap_uint<64>)bptr_local_addr(ptr) * sizeof(Node);
+				// Non-blocking issue; the completion is consumed by the retire
+				// branch above, never waited for here (see the PROTOCOL-region
+				// history in git for why that order was once a hang).
+				m_axis_tx_meta.write(rdma_bram_read_meta(
+					(ap_uint<24>)local_qpn, slot * sizeof(Node), raddr, sizeof(Node)));
+				pending_t p; p.lane = lane; p.slot = slot;
+				pending.write(p);
+			}
+		}
 	}
 
 	drain_slots: for (ap_uint<5> s = 0; s < RDMA_LANDING_SLOTS; s++) {

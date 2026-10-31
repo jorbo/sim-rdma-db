@@ -49,8 +49,8 @@ int main() {
 		failed++;
 	}
 
-	std::cout << "--- Batch Dedup Root ---" << std::endl;
-	if (batch_dedup_root(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
+	std::cout << "--- Batch Independent ---" << std::endl;
+	if (batch_independent(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
 		std::cout << "\nPassed!\n" << std::endl;
 		passed++;
 	} else {

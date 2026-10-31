@@ -9,19 +9,16 @@
 #include "ramstream.hpp"
 
 
-//! @brief Level-wise batch search with local/remote dispatch.
+//! @brief Search with SEARCH_WINDOW independent lookups in flight.
 //!
-//! Runs as a DATAFLOW process. Admits up to SEARCH_WINDOW tagged inputs per
-//! batch and walks them down the tree one level at a time: at each level the
-//! distinct nodes the batch is on are fetched once each (local HBM read, or
-//! one RDMA read into a landing slot, up to RDMA_LANDING_SLOTS in flight)
-//! and applied to every key waiting on them. Root and internal fetches are
-//! shared across the batch; only the leaf level scales with it. With
-//! SEARCH_NODE_CACHE, remote inner nodes are cached for the rest of the
-//! invocation, so batches after the first only go to the wire for leaves.
-//! Outputs are
-//! emitted in input order so sm_encode stays in lockstep with sm_insert.
-//! Stops after the input tagged `last`; filler inputs produce filler outputs.
+//! Runs as a DATAFLOW process. Each lane holds one tagged input and walks
+//! it down the tree one node at a time (local HBM read, or one RDMA read
+//! into a landing slot), issuing the next fetch as soon as a node lands;
+//! lanes share nothing, like the clients of the paper's fine-grained
+//! design. With SEARCH_NODE_CACHE, remote inner nodes are cached for the
+//! rest of the invocation. Outputs are emitted in input order so sm_encode
+//! stays in lockstep with sm_insert. Stops after the input tagged `last`;
+//! filler inputs produce filler outputs.
 void sm_search(
 	bptr_t         root,
 	node_id_t      local_id,

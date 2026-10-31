@@ -1,4 +1,4 @@
-#include "batch-dedup-root.hpp"
+#include "batch-independent.hpp"
 #include "../../hls/krnl.hpp"
 #include "../../hls/ramstream.hpp"
 #include <iostream>
@@ -22,7 +22,11 @@ static bool expect_beat(hls::stream<pkt256> &meta, ap_uint<64> laddr, ap_uint<64
 	return ok;
 }
 
-bool batch_dedup_root(KERNEL_ARG_DECS) {
+bool batch_independent(KERNEL_ARG_DECS) {
+#if SEARCH_NODE_CACHE
+	std::cout << "SEARCH_NODE_CACHE is 1: skipped (fetch pattern is for pure fine-grained)" << std::endl;
+	return true;
+#else
 	bool pass = true;
 	const node_id_t local_id  = 1;
 	const node_id_t remote_id = 0;
@@ -50,11 +54,15 @@ bool batch_dedup_root(KERNEL_ARG_DECS) {
 	DECLARE_RDMA_ARGS
 	my_node_id = local_id;
 	local_qpn  = 0x101;
-	// Fetch order the kernel must produce: root (slot 0), then the distinct
-	// leaves in first-seen key order: leaf_a (slot 1), leaf_b (slot 2).
+	// csim has every completion staged up front, so each read retires as
+	// soon as it is issued and the work queue serves lanes round-robin:
+	// three root reads (slots 0..2), then each lane's leaf (slots 3..5).
 	SIMULATE_REMOTE_FETCH(0, root_node);
-	SIMULATE_REMOTE_FETCH(1, leaf_a_node);
-	SIMULATE_REMOTE_FETCH(2, leaf_b_node);
+	SIMULATE_REMOTE_FETCH(1, root_node);
+	SIMULATE_REMOTE_FETCH(2, root_node);
+	SIMULATE_REMOTE_FETCH(3, leaf_a_node);
+	SIMULATE_REMOTE_FETCH(4, leaf_a_node);
+	SIMULATE_REMOTE_FETCH(5, leaf_b_node);
 
 	krnl(KERNEL_ARG_VARS);
 
@@ -68,11 +76,14 @@ bool batch_dedup_root(KERNEL_ARG_DECS) {
 	}
 
 	const ap_uint<64> N = sizeof(Node);
-	pass &= expect_beat(m_axis_tx_meta, 0,     0x14 * N, "root fetch");
-	pass &= expect_beat(m_axis_tx_meta, 1 * N, 0x01 * N, "leaf_a fetch");
-	pass &= expect_beat(m_axis_tx_meta, 2 * N, 0x02 * N, "leaf_b fetch");
+	pass &= expect_beat(m_axis_tx_meta, 0,     0x14 * N, "key 5 root fetch");
+	pass &= expect_beat(m_axis_tx_meta, 1 * N, 0x14 * N, "key 8 root fetch");
+	pass &= expect_beat(m_axis_tx_meta, 2 * N, 0x14 * N, "key 15 root fetch");
+	pass &= expect_beat(m_axis_tx_meta, 3 * N, 0x01 * N, "key 5 leaf_a fetch");
+	pass &= expect_beat(m_axis_tx_meta, 4 * N, 0x01 * N, "key 8 leaf_a fetch");
+	pass &= expect_beat(m_axis_tx_meta, 5 * N, 0x02 * N, "key 15 leaf_b fetch");
 	if (!m_axis_tx_meta.empty()) {
-		std::cerr << "extra RDMA metadata: root or a leaf was fetched more than once" << std::endl;
+		std::cerr << "extra RDMA metadata: a node was fetched more than expected" << std::endl;
 		pass = false;
 	}
 	if (!s_axis_completion.empty()) {
@@ -80,4 +91,5 @@ bool batch_dedup_root(KERNEL_ARG_DECS) {
 		pass = false;
 	}
 	return pass;
+#endif
 }

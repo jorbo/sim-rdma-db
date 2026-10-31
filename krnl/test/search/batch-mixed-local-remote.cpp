@@ -4,6 +4,10 @@
 #include <iostream>
 
 bool batch_mixed_local_remote(KERNEL_ARG_DECS) {
+#if SEARCH_NODE_CACHE
+	std::cout << "SEARCH_NODE_CACHE is 1: skipped (fetch pattern is for pure fine-grained)" << std::endl;
+	return true;
+#else
 	bool pass = true;
 	const node_id_t local_id  = 1;
 	const node_id_t remote_id = 0;
@@ -31,8 +35,9 @@ bool batch_mixed_local_remote(KERNEL_ARG_DECS) {
 	DECLARE_RDMA_ARGS
 	my_node_id = local_id;
 	local_qpn  = 0x101;
-	SIMULATE_REMOTE_FETCH(0, root_node);          // level 0
-	SIMULATE_REMOTE_FETCH(1, remote_leaf_node);   // level 1: only the remote leaf uses a slot
+	SIMULATE_REMOTE_FETCH(0, root_node);          // local-leaf key's root
+	SIMULATE_REMOTE_FETCH(1, root_node);          // remote-leaf key's root
+	SIMULATE_REMOTE_FETCH(2, remote_leaf_node);   // only the remote leaf uses a slot
 
 	krnl(KERNEL_ARG_VARS);
 
@@ -48,8 +53,8 @@ bool batch_mixed_local_remote(KERNEL_ARG_DECS) {
 
 	int beats = 0;
 	while (!m_axis_tx_meta.empty()) { m_axis_tx_meta.read(); beats++; }
-	if (beats != 2) {
-		std::cerr << "expected 2 RDMA reads (root + remote leaf), got " << beats << std::endl;
+	if (beats != 3) {
+		std::cerr << "expected 3 RDMA reads (root twice + remote leaf), got " << beats << std::endl;
 		pass = false;
 	}
 	if (!s_axis_completion.empty()) {
@@ -57,4 +62,5 @@ bool batch_mixed_local_remote(KERNEL_ARG_DECS) {
 		pass = false;
 	}
 	return pass;
+#endif
 }

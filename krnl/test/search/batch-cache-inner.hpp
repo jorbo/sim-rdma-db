@@ -7,11 +7,11 @@ extern "C" {
 };
 #include "../test-helpers.hpp"
 
-//! Two batches over a three-level remote tree (root -> inner -> two leaves).
-//! The first batch fetches root, inner and both leaves. The second batch
-//! must reuse the cached root and inner node and fetch only its leaves
-//! again: 6 RDMA reads in total instead of 8, every key's value returned.
-//! Skipped (passes) when SEARCH_NODE_CACHE is 0.
+//! Three keys over a three-level remote tree (root -> inner -> two leaves)
+//! with SEARCH_NODE_CACHE on. The first key fetches root and inner; the
+//! other two must take them from the cache and fetch only their leaves:
+//! 5 RDMA reads instead of 9, every key's value returned. Skipped (passes)
+//! when the cache is compiled out.
 bool batch_cache_inner(KERNEL_ARG_DECS);
 
 #endif
