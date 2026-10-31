@@ -16,9 +16,10 @@
 //! distinct nodes the batch is on are fetched once each (local HBM read, or
 //! one RDMA read into a landing slot, up to RDMA_LANDING_SLOTS in flight)
 //! and applied to every key waiting on them. Root and internal fetches are
-//! shared across the batch; only the leaf level scales with it. Remote inner
-//! nodes are cached for the rest of the invocation, so batches after the
-//! first only go to the wire for leaves. Outputs are
+//! shared across the batch; only the leaf level scales with it. With
+//! SEARCH_NODE_CACHE, remote inner nodes are cached for the rest of the
+//! invocation, so batches after the first only go to the wire for leaves.
+//! Outputs are
 //! emitted in input order so sm_encode stays in lockstep with sm_insert.
 //! Stops after the input tagged `last`; filler inputs produce filler outputs.
 void sm_search(

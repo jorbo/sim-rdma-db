@@ -11,6 +11,7 @@ extern "C" {
 //! The first batch fetches root, inner and both leaves. The second batch
 //! must reuse the cached root and inner node and fetch only its leaves
 //! again: 6 RDMA reads in total instead of 8, every key's value returned.
+//! Skipped (passes) when SEARCH_NODE_CACHE is 0.
 bool batch_cache_inner(KERNEL_ARG_DECS);
 
 #endif

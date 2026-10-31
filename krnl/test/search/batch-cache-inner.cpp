@@ -23,6 +23,10 @@ static bool expect_beat(hls::stream<pkt256> &meta, ap_uint<64> laddr, ap_uint<64
 }
 
 bool batch_cache_inner(KERNEL_ARG_DECS) {
+#if !SEARCH_NODE_CACHE
+	std::cout << "SEARCH_NODE_CACHE is 0: skipped" << std::endl;
+	return true;
+#else
 	bool pass = true;
 	const node_id_t local_id  = 1;
 	const node_id_t remote_id = 0;
@@ -102,4 +106,5 @@ bool batch_cache_inner(KERNEL_ARG_DECS) {
 		pass = false;
 	}
 	return pass;
+#endif
 }
