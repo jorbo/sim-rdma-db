@@ -15,7 +15,7 @@
 //! it down the tree one node at a time (local HBM read, or one RDMA read
 //! into a landing slot), issuing the next fetch as soon as a node lands;
 //! lanes share nothing, like the clients of the paper's fine-grained
-//! design. With SEARCH_NODE_CACHE, remote inner nodes are cached for the
+//! design. `clients` (1..SEARCH_WINDOW) caps how many lanes are used. With SEARCH_NODE_CACHE, remote inner nodes are cached for the
 //! rest of the invocation. Outputs are emitted in input order so sm_encode
 //! stays in lockstep with sm_insert. Stops after the input tagged `last`;
 //! filler inputs produce filler outputs.
@@ -24,6 +24,7 @@ void sm_search(
 	node_id_t      local_id,
 	Node          *hbm,
 	int            local_qpn,
+	ap_uint<5>     clients,
 	hls::stream<search_tagged_in_t>&  input,
 	hls::stream<search_tagged_out_t>& output,
 	hls::stream<pkt256>&              m_axis_tx_meta,

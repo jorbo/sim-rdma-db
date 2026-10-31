@@ -57,6 +57,14 @@ int main() {
 		std::cerr << "\nFailed!\n" << std::endl;
 		failed++;
 	}
+	std::cout << "--- Batch One Client ---" << std::endl;
+	if (batch_one_client(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
+		std::cout << "\nPassed!\n" << std::endl;
+		passed++;
+	} else {
+		std::cerr << "\nFailed!\n" << std::endl;
+		failed++;
+	}
 	std::cout << "--- Batch Mixed Local/Remote ---" << std::endl;
 	if (batch_mixed_local_remote(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
 		std::cout << "\nPassed!\n" << std::endl;

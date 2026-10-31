@@ -17,7 +17,8 @@ void krnl(
 	int           local_qpn,
 	hls::stream<pkt256>& m_axis_tx_meta,
 	hls::stream<pkt32>&  s_axis_completion,
-	Node        *resp_in
+	Node        *resp_in,
+	int           clients
 ) {
 	#pragma HLS INTERFACE m_axi port=root        bundle=gmem3 depth=1   offset=slave latency=40 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=1  max_write_burst_length=1
 	#pragma HLS INTERFACE m_axi port=hbm         bundle=gmem0 depth=40  offset=slave latency=40 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=16
@@ -32,6 +33,7 @@ void krnl(
 	#pragma HLS INTERFACE s_axilite port=reset
 	#pragma HLS INTERFACE s_axilite port=my_node_id
 	#pragma HLS INTERFACE s_axilite port=local_qpn
+	#pragma HLS INTERFACE s_axilite port=clients
 	#pragma HLS INTERFACE m_axi     port=resp_in   bundle=gmem5 depth=RDMA_LANDING_SLOTS  offset=slave latency=40 num_read_outstanding=16 num_write_outstanding=16 max_read_burst_length=16 max_write_burst_length=1
 	#pragma HLS INTERFACE axis port=m_axis_tx_meta    depth=64
 	#pragma HLS INTERFACE axis port=s_axis_completion depth=64
@@ -53,6 +55,12 @@ void krnl(
 		num_requests = (int)NUM_REQUESTS;
 	}
 	(void)loop_max; // No longer needed: DATAFLOW self-terminates on `last`.
+	// Concurrent searches (the paper's client count): 0 or out of range
+	// means all SEARCH_WINDOW lanes.
+	ap_uint<5> search_clients = SEARCH_WINDOW;
+	if (clients >= 1 && clients <= SEARCH_WINDOW) {
+		search_clients = clients;
+	}
 
 	bptr_t root_for_search = invocation_root;
 	bptr_t root_for_insert = invocation_root;
@@ -75,7 +83,7 @@ void krnl(
 
 		sm_ramstream_req(requests, req_buffer, num_requests);
 		sm_decode(requests, searchInput, insertInput);
-		sm_search(root_for_search, my_node_id, hbm, local_qpn, searchInput, searchOutput, m_axis_tx_meta, s_axis_completion, resp_in);
+		sm_search(root_for_search, my_node_id, hbm, local_qpn, search_clients, searchInput, searchOutput, m_axis_tx_meta, s_axis_completion, resp_in);
 		sm_insert(root_for_insert, my_node_id, hbm, insertInput, insertOutput);
 		sm_encode(responses, searchOutput, insertOutput);
 		sm_ramstream_resp(responses, resp_buffer);

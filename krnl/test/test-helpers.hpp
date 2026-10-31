@@ -34,13 +34,14 @@ extern "C"
 #define DECLARE_RDMA_ARGS                  \
 	node_id_t my_node_id = 0;              \
 	int local_qpn = 0;                     \
+	int clients = 0;                       \
 	hls::stream<pkt256> m_axis_tx_meta;    \
 	hls::stream<pkt32> s_axis_completion;  \
 	Node resp_in_slot[RDMA_LANDING_SLOTS] = {}; \
 	Node *resp_in = resp_in_slot;
 #define KERNEL_ARG_VARS                                          \
 	root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset, \
-		my_node_id, local_qpn, m_axis_tx_meta, s_axis_completion, resp_in
+		my_node_id, local_qpn, m_axis_tx_meta, s_axis_completion, resp_in, clients
 
 //! Pre-stage one remote RDMA-read response in landing slot `slot_`.
 //!

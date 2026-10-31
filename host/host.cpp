@@ -173,6 +173,13 @@ static void run_kernel(
 	// Args 9/10 are the AXIS streams (m_axis_tx_meta, s_axis_completion):
 	// stream-connected in the xclbin, never set from the host.
 	OCL_CHECK(err, err = krnl1.setArg(11, buffer_resp_in));
+	// SEARCH_CLIENTS: concurrent searches (the paper's client count) for a
+	// throughput-vs-clients sweep without rebuilding. Unset or 0 = all lanes;
+	// the kernel clamps out-of-range values to its SEARCH_WINDOW.
+	const char *clients_env = getenv("SEARCH_CLIENTS");
+	const int clients = clients_env != nullptr ? std::atoi(clients_env) : 0;
+	OCL_CHECK(err, err = krnl1.setArg(12, clients));
+	printf("Search clients : %d%s\n", clients, clients == 0 ? " (all lanes)" : "");
 
 	// HOST -> DEVICE
 	std::cout << "HOST -> DEVICE" << std::endl;

@@ -9,7 +9,8 @@
 // read into a landing slot), the next one issued as soon as the previous
 // node lands. This is the client model of Ziegler et al. (SIGMOD'19,
 // fine-grained design): a lane is a client with one request outstanding,
-// no fetch is shared between lanes, and SEARCH_WINDOW is the client count.
+// no fetch is shared between lanes, and `clients` (at most SEARCH_WINDOW)
+// is the client count.
 // Lanes form a ring: a lane is refilled from the input once its result has
 // been emitted, so results leave in input order and sm_encode stays in
 // lockstep with sm_insert.
@@ -77,6 +78,7 @@ void sm_search(
 	node_id_t      local_id,
 	Node          *hbm,
 	int            local_qpn,
+	ap_uint<5>     clients,
 	hls::stream<search_tagged_in_t>&  input,
 	hls::stream<search_tagged_out_t>& output,
 	hls::stream<pkt256>&              m_axis_tx_meta,
@@ -100,7 +102,7 @@ void sm_search(
 	#pragma HLS array_partition variable=lane_done complete
 
 	// Lane indices are 4 bits and wrap with the ring; `busy` runs 0..16
-	// and must be 5 bits or `busy < SEARCH_WINDOW` can never be false.
+	// and must be 5 bits or `busy < clients` can never be false.
 	ap_uint<4> head = 0;             // oldest lane, next to emit
 	ap_uint<4> tail = 0;             // next lane to fill
 	ap_uint<5> busy = 0;             // lanes in [head, tail)
@@ -130,7 +132,7 @@ void sm_search(
 		#pragma HLS pipeline off
 		#pragma HLS loop_tripcount max=NUM_REQUESTS*(MAX_LEVELS+3)
 		const bool can_emit   = busy != 0 && lane_done[head];
-		const bool can_admit  = !saw_last && busy < SEARCH_WINDOW && !input.empty();
+		const bool can_admit  = !saw_last && busy < clients && !input.empty();
 		const bool can_retire = !s_axis_completion.empty() && !pending.empty();
 		const bool can_issue  = !work.empty() && !free_slots.empty();
 

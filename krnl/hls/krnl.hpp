@@ -33,7 +33,10 @@ void krnl(
 	hls::stream<pkt32>&  s_axis_completion,
 	//! [in]    HBM-resident response landing pad (shared bank with rocetest m00_axi).
 	//!         First-light: single in-flight read, slot=0.
-	Node        *resp_in
+	Node        *resp_in,
+	//! [in]    Searches kept in flight (1..SEARCH_WINDOW; 0 = SEARCH_WINDOW).
+	//!         The client count of the paper's experiments, set per run.
+	int           clients
 );
 
 
