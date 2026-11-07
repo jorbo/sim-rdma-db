@@ -29,6 +29,11 @@
 #                  throughput against clients without rebuilding.
 #   RUN_TIMEOUT    seconds before the head node run is declared hung and
 #                  debug state is collected (default: 180; 0 disables)
+#   SKIP_COPY      0 (default). Set to 1 to reuse the host_exe, xclbins,
+#                  nodes.cfg and xrt.ini already in REMOTE_DIR on both nodes
+#                  (repeated runs and sweeps on an unchanged build). The
+#                  remote files are checked, not refreshed: rerun once with
+#                  SKIP_COPY=0 after any rebuild.
 #
 # The host binary is copied, not rebuilt: both machines must run the
 # same XRT version as the build machine.
@@ -47,6 +52,7 @@ ILA_ARMING=${ILA_ARMING:-0}
 LAUNCH_PROBE=${LAUNCH_PROBE:-0}
 SEARCH_CLIENTS=${SEARCH_CLIENTS:-0}
 RUN_TIMEOUT=${RUN_TIMEOUT:-180}
+SKIP_COPY=${SKIP_COPY:-0}
 # Non-interactive ssh does not load the XRT environment; source it
 # explicitly in every remote run command.
 XRT_SETUP=${XRT_SETUP:-/opt/xilinx/xrt/setup.sh}
@@ -57,7 +63,12 @@ BD0=build_dir.hw.$XSA.server0/krnl.xclbin
 BD1=build_dir.hw.$XSA.server1/krnl.xclbin
 CFG_BASE=$(basename "$CFG")
 
-for f in host_exe "$BD0" "$BD1" "$CFG" "$XRT_INI"; do
+if [ "$SKIP_COPY" = 1 ]; then
+	LOCAL_REQUIRED=("$CFG")
+else
+	LOCAL_REQUIRED=(host_exe "$BD0" "$BD1" "$CFG" "$XRT_INI")
+fi
+for f in "${LOCAL_REQUIRED[@]}"; do
 	[ -f "$f" ] || { echo "ERROR: missing $f" >&2; exit 1; }
 done
 # Head node needs a third fpga_ip column to program the RoCE stack.
@@ -66,19 +77,27 @@ if ! awk '!/^#/ && NF > 0 && NF < 3 {exit 1}' "$CFG"; then
 	exit 1
 fi
 
-echo "== Copying artifacts =="
 for h in "$TABLE" "$HEAD"; do
 	ssh "$h" "mkdir -p $REMOTE_DIR && [ -f $XRT_SETUP ]" || {
 		echo "ERROR: $XRT_SETUP not found on $h — is XRT installed?" >&2
 		exit 1
 	}
 done
-scp host_exe "$CFG" "$TABLE:$REMOTE_DIR/"
-scp "$XRT_INI" "$TABLE:$REMOTE_DIR/xrt.ini"
-scp "$BD0" "$TABLE:$REMOTE_DIR/krnl.server0.xclbin"
-scp host_exe "$CFG" "$HEAD:$REMOTE_DIR/"
-scp "$XRT_INI" "$HEAD:$REMOTE_DIR/xrt.ini"
-scp "$BD1" "$HEAD:$REMOTE_DIR/krnl.server1.xclbin"
+if [ "$SKIP_COPY" = 1 ]; then
+	echo "== SKIP_COPY=1: reusing artifacts already in $REMOTE_DIR =="
+	ssh "$TABLE" "cd $REMOTE_DIR && for f in host_exe $CFG_BASE xrt.ini krnl.server0.xclbin; do [ -f \$f ] || { echo \"missing \$f\"; exit 1; }; done" || {
+		echo "ERROR: $TABLE:$REMOTE_DIR is incomplete; run once with SKIP_COPY=0" >&2; exit 1; }
+	ssh "$HEAD" "cd $REMOTE_DIR && for f in host_exe $CFG_BASE xrt.ini krnl.server1.xclbin; do [ -f \$f ] || { echo \"missing \$f\"; exit 1; }; done" || {
+		echo "ERROR: $HEAD:$REMOTE_DIR is incomplete; run once with SKIP_COPY=0" >&2; exit 1; }
+else
+	echo "== Copying artifacts =="
+	scp host_exe "$CFG" "$TABLE:$REMOTE_DIR/"
+	scp "$XRT_INI" "$TABLE:$REMOTE_DIR/xrt.ini"
+	scp "$BD0" "$TABLE:$REMOTE_DIR/krnl.server0.xclbin"
+	scp host_exe "$CFG" "$HEAD:$REMOTE_DIR/"
+	scp "$XRT_INI" "$HEAD:$REMOTE_DIR/xrt.ini"
+	scp "$BD1" "$HEAD:$REMOTE_DIR/krnl.server1.xclbin"
+fi
 
 echo "== Starting table node on $TABLE (background) =="
 # The '&' must bind to a single command with ALL fds redirected. If it
