@@ -10,6 +10,7 @@
 #include "search/batch-one-client.hpp"
 #include "search/batch-mixed-local-remote.hpp"
 #include "search/batch-cache-inner.hpp"
+#include "search/full-window.hpp"
 #include "insert/leaf-node.hpp"
 #include "insert/split-root.hpp"
 #include "insert/until-it-breaks.hpp"

@@ -82,6 +82,15 @@ int main() {
 		failed++;
 	}
 
+	std::cout << "--- Full Window (NUM_REQUESTS searches) ---" << std::endl;
+	if (full_window(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
+		std::cout << "\nPassed!\n" << std::endl;
+		passed++;
+	} else {
+		std::cerr << "\nFailed!\n" << std::endl;
+		failed++;
+	}
+
 	std::cout << "\n\n=== Insert Tests ===" << std::endl;
 	std::cout << "--- Leaf Node ---" << std::endl;
 	if (leaf_node(&root, hbm, req_buffer, resp_buffer, loop_max, op_max, reset)) {
