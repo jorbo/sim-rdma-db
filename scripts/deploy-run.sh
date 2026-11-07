@@ -27,6 +27,11 @@
 #   SEARCH_CLIENTS concurrent searches on the head, 1..16 (default: unset =
 #                  all lanes). The paper's client count; sweep it to plot
 #                  throughput against clients without rebuilding.
+#   BENCH_SEARCHES 0 (default: the 22-key test). Set to N for N uniform-random
+#                  lookups in batches of 256 (one kernel launch each), every
+#                  batch verified, one "BENCH ..." summary line in head.log.
+#                  Kernel-only rate: N / krnl_1 Total Time in summary.csv.
+#   BENCH_SEED     random seed for BENCH_SEARCHES keys (default: 1)
 #   RUN_TIMEOUT    seconds before the head node run is declared hung and
 #                  debug state is collected (default: 180; 0 disables)
 #   SKIP_COPY      0 (default). Set to 1 to reuse the host_exe, xclbins,
@@ -51,6 +56,8 @@ SELFTEST=${RDMA_SELFTEST:-0}
 ILA_ARMING=${ILA_ARMING:-0}
 LAUNCH_PROBE=${LAUNCH_PROBE:-0}
 SEARCH_CLIENTS=${SEARCH_CLIENTS:-0}
+BENCH_SEARCHES=${BENCH_SEARCHES:-0}
+BENCH_SEED=${BENCH_SEED:-1}
 RUN_TIMEOUT=${RUN_TIMEOUT:-180}
 SKIP_COPY=${SKIP_COPY:-0}
 # Non-interactive ssh does not load the XRT environment; source it
@@ -181,11 +188,11 @@ if [ "$RUN_TIMEOUT" -gt 0 ] 2>/dev/null; then
 	TIMEOUT_CMD="timeout --foreground $RUN_TIMEOUT"
 fi
 
-echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, ILA_ARMING=$ILA_ARMING, LAUNCH_PROBE=$LAUNCH_PROBE, SEARCH_CLIENTS=$SEARCH_CLIENTS, timeout ${RUN_TIMEOUT}s) =="
+echo "== Running head node on $HEAD (RDMA_SELFTEST=$SELFTEST, ILA_ARMING=$ILA_ARMING, LAUNCH_PROBE=$LAUNCH_PROBE, SEARCH_CLIENTS=$SEARCH_CLIENTS, BENCH_SEARCHES=$BENCH_SEARCHES, timeout ${RUN_TIMEOUT}s) =="
 set +e
 $TIMEOUT_CMD ssh "$HEAD" \
 	". $XRT_SETUP > /dev/null && cd $REMOTE_DIR && \
-	 XRT_INI_PATH=./xrt.ini RDMA_SELFTEST=$SELFTEST ILA_ARMING=$ILA_ARMING LAUNCH_PROBE=$LAUNCH_PROBE SEARCH_CLIENTS=$SEARCH_CLIENTS ./host_exe \
+	 XRT_INI_PATH=./xrt.ini RDMA_SELFTEST=$SELFTEST ILA_ARMING=$ILA_ARMING LAUNCH_PROBE=$LAUNCH_PROBE SEARCH_CLIENTS=$SEARCH_CLIENTS BENCH_SEARCHES=$BENCH_SEARCHES BENCH_SEED=$BENCH_SEED ./host_exe \
 	 krnl.server1.xclbin 1 $CFG_BASE" | tee head.log
 RC=${PIPESTATUS[0]}
 set -e

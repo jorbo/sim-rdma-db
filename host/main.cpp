@@ -3,6 +3,7 @@
 #include "roce-setup.hpp"
 #include "test.hpp"
 #include "run-tree.hpp"
+#include <algorithm>
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
@@ -42,6 +43,72 @@ static bool wait_for_roce_peers(
 	}
 	std::cout << "All RoCE endpoints ready." << std::endl;
 	return true;
+}
+
+
+//! Positive integer from the environment, or 0 when unset/invalid.
+static long env_long(const char* name) {
+	const char* v = getenv(name);
+	if (v == nullptr || *v == '\0') return 0;
+	char* end = nullptr;
+	const long n = std::strtol(v, &end, 10);
+	return (end != nullptr && *end == '\0' && n > 0) ? n : 0;
+}
+
+
+//! BENCH_SEARCHES mode: run the whole request list in kernel-sized batches
+//! (KRNL_MAX_REQUESTS each), verify every batch, and print one BENCH
+//! summary line plus a single TEST verdict. Kernel-only throughput comes
+//! from the profile summary (sum of krnl_1 CU time, XRT excluded); the
+//! wall-clock numbers here include XRT launch overhead per batch.
+static int run_bench(
+	TreeDevice& dev,
+	TreeInput& input,
+	std::vector<Response, aligned_allocator<Response> >& expected,
+	const RdmaConfig& rdma
+) {
+	const std::vector<Request, aligned_allocator<Request> > all = input.requests;
+	const size_t n = all.size();
+	const char* clients_env = getenv("SEARCH_CLIENTS");
+	const int clients = clients_env != nullptr ? std::atoi(clients_env) : 0;
+
+	std::vector<double> batch_ms;
+	size_t passed = 0;
+	for (size_t off = 0; off < n; off += KRNL_MAX_REQUESTS) {
+		const size_t len = std::min<size_t>(KRNL_MAX_REQUESTS, n - off);
+		input.requests.assign(all.begin() + off, all.begin() + off + len);
+		std::vector<Response, aligned_allocator<Response> > exp(
+			expected.begin() + off, expected.begin() + off + len);
+
+		double ms = 0;
+		TreeOutput output = run_fpga_tree(dev, input, rdma, /*quiet=*/true, &ms);
+		batch_ms.push_back(ms);
+		if (verify(output.responses, exp, output.memory,
+		           /*check_memory=*/false, /*quiet=*/true) == EXIT_SUCCESS)
+			passed++;
+		else
+			std::cerr << "BENCH batch " << off / KRNL_MAX_REQUESTS
+			          << " FAILED" << std::endl;
+	}
+	input.requests = all;
+
+	const size_t batches = batch_ms.size();
+	double total_ms = 0;
+	for (double ms : batch_ms) total_ms += ms;
+	std::vector<double> sorted = batch_ms;
+	std::sort(sorted.begin(), sorted.end());
+	const double median_ms = batches ? sorted[batches / 2] : 0;
+
+	printf("BENCH clients=%d searches=%zu batches=%zu passed=%zu/%zu "
+	       "wall_comp_ms=%.3f median_batch_ms=%.4f lookups_per_s_wall=%.0f\n",
+	       clients, n, batches, passed, batches, total_ms, median_ms,
+	       total_ms > 0 ? n / (total_ms / 1000.0) : 0.0);
+	printf("BENCH note: kernel-only rate = searches / (krnl_1 Total Time in "
+	       "summary.csv); wall numbers include XRT launch overhead\n");
+
+	const bool ok = batches > 0 && passed == batches;
+	std::cout << "TEST " << (ok ? "PASSED" : "FAILED") << std::endl;
+	return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 
@@ -92,7 +159,20 @@ int main(int argc, char** argv) {
 		for (;;) pause();
 	} else {
 		// Head node: no local tree; search the table node's tree remotely.
-		setup_search_data(input.requests, responses_expected);
+		// BENCH_SEARCHES=N swaps the 22-key test for N uniform-random
+		// lookups run in kernel-sized batches (BENCH_SEED, default 1).
+		const long bench_searches = env_long("BENCH_SEARCHES");
+		if (bench_searches > 0) {
+			const long seed = env_long("BENCH_SEED");
+			setup_bench_search_data((size_t)bench_searches,
+			                        seed > 0 ? (uint32_t)seed : 1u,
+			                        input.requests, responses_expected);
+			std::cout << "BENCH_SEARCHES=" << bench_searches
+			          << " (batches of " << KRNL_MAX_REQUESTS << ")"
+			          << std::endl;
+		} else {
+			setup_search_data(input.requests, responses_expected);
+		}
 		TreeDevice dev = tree_device_setup(xclbin, input);
 
 		RdmaConfig rdma = bootstrap_rdma(my_id, nodes, qpn_for(my_id),
@@ -151,6 +231,9 @@ int main(int argc, char** argv) {
 			std::cerr << "Table node advertised no tree root" << std::endl;
 			return EXIT_FAILURE;
 		}
+
+		if (bench_searches > 0)
+			return run_bench(dev, input, responses_expected, rdma);
 
 		TreeOutput output = run_fpga_tree(dev, input, rdma);
 		return verify(output.responses, responses_expected, output.memory,

@@ -4,6 +4,7 @@ extern "C" {
 };
 #include "validate.hpp"
 #include "cpp-ext.hpp"
+#include <random>
 
 
 void setup_data(
@@ -46,15 +47,40 @@ void setup_search_data(
 }
 
 
+void setup_bench_search_data(
+	size_t n,
+	uint32_t seed,
+	std::vector<Request, aligned_allocator<Request> >& requests,
+	std::vector<Response, aligned_allocator<Response> >& responses_expected
+) {
+	std::mt19937 rng(seed);
+	std::uniform_int_distribution<int> key_dist(1, TEST_N_KEYS);
+	Request tmp_req = {.opcode = SEARCH};
+	Response tmp_resp = {.opcode = SEARCH};
+	tmp_resp.search.status = SUCCESS;
+
+	requests.reserve(requests.size() + n);
+	responses_expected.reserve(responses_expected.size() + n);
+	for (size_t i = 0; i < n; i++) {
+		const int k = key_dist(rng);
+		tmp_req.search = k;
+		tmp_resp.search.value.data = -k;
+		requests.push_back(tmp_req);
+		responses_expected.push_back(tmp_resp);
+	}
+}
+
+
 int verify(
 	std::vector<Response, aligned_allocator<Response> >& responses,
 	std::vector<Response, aligned_allocator<Response> >& responses_expected,
 	std::vector<Node, aligned_allocator<Node> >& memory,
-	bool check_memory
+	bool check_memory,
+	bool quiet
 ) {
 	bool match = true;
 
-	printf("Verifying Responses...");
+	if (!quiet) printf("Verifying Responses...");
 	if (responses.size() != responses_expected.size()) {
 		match = false;
 	} else {
@@ -67,7 +93,7 @@ int verify(
 			}
 		}
 	}
-	printf("Done!\n");
+	if (!quiet) printf("Done!\n");
 	if (check_memory) {
 		printf("Verifying memory contents...\n");
 		match = check_inserted_leaves(memory.data()) && match;
@@ -76,6 +102,7 @@ int verify(
 		dump_node_list(stdout, memory.data());
 	}
 
-	std::cout << "TEST " << (match ? "PASSED" : "FAILED") << std::endl;
+	if (!quiet)
+		std::cout << "TEST " << (match ? "PASSED" : "FAILED") << std::endl;
 	return (match ? EXIT_SUCCESS : EXIT_FAILURE);
 }

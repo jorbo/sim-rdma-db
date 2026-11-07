@@ -117,7 +117,11 @@ TreeDevice tree_device_setup(std::string const &binaryFile, TreeInput &input)
 	return dev;
 }
 
-static void run_kernel(
+//! @param quiet  benchmark batches: no per-launch progress/timing prints and
+//!               no LAUNCH_PROBE run (it would add an empty krnl_1 call per
+//!               batch to the profile summary)
+//! @return wall-clock enqueueTask-to-finish time of the run, in ms
+static double run_kernel(
 	cl::Context &context,
 	cl::Kernel &krnl1,
 	cl::CommandQueue &q,
@@ -126,7 +130,8 @@ static void run_kernel(
 	bptr_t &root,
 	std::vector<Request, aligned_allocator<Request>> &requests,
 	std::vector<Response, aligned_allocator<Response>> &responses,
-	const RdmaConfig &rdma)
+	const RdmaConfig &rdma,
+	bool quiet)
 {
 	constexpr int FROM_HOST_FLAGS = 0;
 	cl_int err;
@@ -179,10 +184,11 @@ static void run_kernel(
 	const char *clients_env = getenv("SEARCH_CLIENTS");
 	const int clients = clients_env != nullptr ? std::atoi(clients_env) : 0;
 	OCL_CHECK(err, err = krnl1.setArg(12, clients));
-	printf("Search clients : %d%s\n", clients, clients == 0 ? " (all lanes)" : "");
+	if (!quiet)
+		printf("Search clients : %d%s\n", clients, clients == 0 ? " (all lanes)" : "");
 
 	// HOST -> DEVICE
-	std::cout << "HOST -> DEVICE" << std::endl;
+	if (!quiet) std::cout << "HOST -> DEVICE" << std::endl;
 	t0 = wall::now();
 	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
 					   {buffer_root, buffer_memory, buffer_requests},
@@ -195,7 +201,7 @@ static void run_kernel(
 	// and the dataflow drains in a few hundred cycles, so this wall time is
 	// almost entirely XRT. Subtract it from "Computation" for kernel time.
 	const char *launch_probe = getenv("LAUNCH_PROBE");
-	if (launch_probe != nullptr && std::strcmp(launch_probe, "1") == 0) {
+	if (!quiet && launch_probe != nullptr && std::strcmp(launch_probe, "1") == 0) {
 		std::vector<Request, aligned_allocator<Request>> nop(1);
 		nop[0].opcode = NOP;
 		OCL_CHECK(err, cl::Buffer buffer_nop(
@@ -215,15 +221,15 @@ static void run_kernel(
 	}
 
 	// RUN
-	std::cout << "STARTING KERNEL(S)" << std::endl;
+	if (!quiet) std::cout << "STARTING KERNEL(S)" << std::endl;
 	t0 = wall::now();
 	OCL_CHECK(err, err = q.enqueueTask(krnl1));
 	q.finish();
 	comp_ms = ms_since(t0);
-	std::cout << "KERNEL(S) FINISHED" << std::endl;
+	if (!quiet) std::cout << "KERNEL(S) FINISHED" << std::endl;
 
 	// DEVICE -> HOST (root can be updated by the kernel on tree splits)
-	std::cout << "HOST <- DEVICE" << std::endl;
+	if (!quiet) std::cout << "HOST <- DEVICE" << std::endl;
 	t0 = wall::now();
 	OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
 					   {buffer_root, buffer_memory, buffer_responses},
@@ -231,20 +237,25 @@ static void run_kernel(
 	q.finish();
 	dtoh_ms = ms_since(t0);
 
-	printf("Host -> Device : %lf ms\n", htod_ms);
-	printf("Device -> Host : %lf ms\n", dtoh_ms);
-	printf("Computation    : %lf ms (wall clock, enqueueTask to finish)\n", comp_ms);
+	if (!quiet) {
+		printf("Host -> Device : %lf ms\n", htod_ms);
+		printf("Device -> Host : %lf ms\n", dtoh_ms);
+		printf("Computation    : %lf ms (wall clock, enqueueTask to finish)\n", comp_ms);
+	}
+	return comp_ms;
 }
 
 TreeOutput run_fpga_tree(TreeDevice &dev, TreeInput &input,
-						 const RdmaConfig &rdma)
+						 const RdmaConfig &rdma, bool quiet, double *comp_ms)
 {
 	TreeOutput output;
 	output.responses.resize(input.requests.size(), {.opcode = NOP});
 
-	run_kernel(
+	const double ms = run_kernel(
 		dev.context, dev.krnl, dev.q, dev.buffer_memory,
-		dev.buffer_rdma, input.root, input.requests, output.responses, rdma);
+		dev.buffer_rdma, input.root, input.requests, output.responses, rdma,
+		quiet);
+	if (comp_ms != nullptr) *comp_ms = ms;
 	memcpy(output.memory.data(), input.memory.data(), MEM_SIZE * sizeof(Node));
 	output.root = input.root; // root may have been updated by splits
 

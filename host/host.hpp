@@ -30,9 +30,17 @@ struct TreeDevice {
 //! Program the device and allocate the RDMA-exposed tree memory buffer.
 TreeDevice tree_device_setup(std::string const& binaryFile, TreeInput& input);
 
+//! Kernel launch cap: requests per run_fpga_tree call. Must match
+//! NUM_REQUESTS in krnl/hls/ramstream.hpp (the kernel clamps op_max to it
+//! and would silently drop the excess).
+#define KRNL_MAX_REQUESTS 256
+
 //! Run the request workload on an already-set-up device.
+//! @param quiet    suppress per-launch prints and the LAUNCH_PROBE run
+//! @param comp_ms  if non-null, receives the wall-clock run time in ms
 TreeOutput run_fpga_tree(TreeDevice& dev, TreeInput& input,
-                         const RdmaConfig& rdma);
+                         const RdmaConfig& rdma, bool quiet = false,
+                         double* comp_ms = nullptr);
 
 
 #endif
