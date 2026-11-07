@@ -90,7 +90,9 @@ static int run_bench(
 			std::cerr << "BENCH batch " << off / KRNL_MAX_REQUESTS
 			          << " FAILED" << std::endl;
 	}
-	input.requests = all;
+	// assign(), not operator=: copy assignment compares allocators and
+	// aligned_allocator (alloc.hpp) defines no operator!=.
+	input.requests.assign(all.begin(), all.end());
 
 	const size_t batches = batch_ms.size();
 	double total_ms = 0;
